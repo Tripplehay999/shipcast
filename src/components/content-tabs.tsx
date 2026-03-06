@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { GenerateResponse } from "@/lib/types";
-import { Copy, Check, Send, CalendarClock, Loader2 } from "lucide-react";
+import { Copy, Check, Send, CalendarClock, Loader2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ContentTabsProps {
@@ -107,6 +107,41 @@ function ScheduleButton({ platform, content, updateId }: { platform: "twitter" |
   );
 }
 
+function ImproveButton({ platform, value, onImproved }: { platform: string; value: string; onImproved: (v: string) => void }) {
+  const [loading, setLoading] = useState(false);
+  const handleImprove = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/improve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: value, platform }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Improve failed");
+      onImproved(data.improved);
+      toast.success("Improved!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Improve failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="border-zinc-700 text-zinc-400 hover:text-purple-400 hover:border-purple-500/40 bg-transparent h-7 px-2 text-xs gap-1"
+      onClick={handleImprove}
+      disabled={loading}
+      title="Improve with AI"
+    >
+      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+      Improve
+    </Button>
+  );
+}
+
 export function ContentTabs({ content, plan = "free", updateId }: ContentTabsProps) {
   const [values, setValues] = useState({
     tweet: content.tweet,
@@ -147,6 +182,11 @@ export function ContentTabs({ content, plan = "free", updateId }: ContentTabsPro
                 {t.label === "IH" ? "Indie Hackers" : t.label}
               </span>
               <div className="flex items-center gap-2 flex-wrap">
+                <ImproveButton
+                  platform={t.key}
+                  value={values[t.key]}
+                  onImproved={(v) => update(t.key)(v)}
+                />
                 <CopyButton text={values[t.key]} />
                 {isStudio && t.platform && (
                   <>

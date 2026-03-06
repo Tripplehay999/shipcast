@@ -7,21 +7,29 @@ import { ChevronDown, ChevronUp, FileText } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
+interface GeneratedContent {
+  tweet: string;
+  thread: string[];
+  linkedin: string;
+  reddit: string;
+  indie_hackers: string;
+}
+
 interface Update {
   id: string;
   raw_update: string;
   created_at: string;
-  generated_content: {
-    tweet: string;
-    thread: string[];
-    linkedin: string;
-    reddit: string;
-    indie_hackers: string;
-  } | null;
+  // Supabase returns foreign key joins as arrays
+  generated_content: GeneratedContent | GeneratedContent[] | null;
 }
 
 function HistoryItem({ update }: { update: Update }) {
   const [expanded, setExpanded] = useState(false);
+
+  // Supabase returns 1:1 joins as arrays — normalize to single object
+  const gc = Array.isArray(update.generated_content)
+    ? update.generated_content[0] ?? null
+    : update.generated_content;
 
   return (
     <Card className="bg-zinc-900 border-zinc-800">
@@ -48,19 +56,19 @@ function HistoryItem({ update }: { update: Update }) {
           )}
         </button>
 
-        {expanded && update.generated_content && (
+        {expanded && gc && (
           <div className="px-4 pb-4">
             <ContentTabs content={{
-              tweet: update.generated_content.tweet,
-              thread: update.generated_content.thread,
-              linkedin: update.generated_content.linkedin,
-              reddit: update.generated_content.reddit,
-              indie_hackers: update.generated_content.indie_hackers,
+              tweet: gc.tweet,
+              thread: Array.isArray(gc.thread) ? gc.thread : [],
+              linkedin: gc.linkedin,
+              reddit: gc.reddit,
+              indie_hackers: gc.indie_hackers,
             }} />
           </div>
         )}
 
-        {expanded && !update.generated_content && (
+        {expanded && !gc && (
           <div className="px-4 pb-4">
             <p className="text-sm text-zinc-600">No generated content for this update.</p>
           </div>

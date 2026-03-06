@@ -103,7 +103,7 @@ Output ONLY raw JSON matching this schema exactly — no markdown, no code fence
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8000,
+      max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -111,7 +111,15 @@ Output ONLY raw JSON matching this schema exactly — no markdown, no code fence
     const jsonStr = extractJson(raw);
     if (!jsonStr) throw new Error("Failed to parse launch kit response");
     const kit = JSON.parse(jsonStr);
-    return NextResponse.json({ kit });
+
+    // Persist so users can access it later
+    const { data: saved } = await supabaseAdmin
+      .from("launch_kits")
+      .insert({ clerk_user_id: userId, description: launchDescription, kit })
+      .select("id")
+      .single();
+
+    return NextResponse.json({ kit, kitId: saved?.id ?? null });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Launch kit generation failed";
     return NextResponse.json({ error: message }, { status: 500 });
