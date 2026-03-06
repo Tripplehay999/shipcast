@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Zap, Layers, Clock, Terminal, GitCommit, BarChart2, Globe } from "lucide-react";
 import { TerminalDemo } from "@/components/terminal-demo";
+import { auth } from "@clerk/nextjs/server";
 
 const platforms = ["Twitter / X", "LinkedIn", "Reddit", "Indie Hackers", "Dev.to", "Product Hunt"];
 
@@ -48,7 +49,10 @@ const voices = [
   },
 ];
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const { userId } = await auth();
+  const isSignedIn = !!userId;
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Nav */}
@@ -58,16 +62,22 @@ export default function LandingPage() {
           <span className="text-xl font-bold tracking-tight">Shipcast</span>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/sign-in">
-            <Button variant="ghost" className="text-zinc-400 hover:text-white">
-              Sign in
-            </Button>
-          </Link>
-          <Link href="/sign-up">
-            <Button className="bg-white text-black hover:bg-zinc-200">
-              Get started free
-            </Button>
-          </Link>
+          {isSignedIn ? (
+            <Link href="/dashboard">
+              <Button className="bg-white text-black hover:bg-zinc-200">
+                Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          ) : (
+            <>
+              <Link href="/sign-in">
+                <Button variant="ghost" className="text-zinc-400 hover:text-white">Sign in</Button>
+              </Link>
+              <Link href="/sign-up">
+                <Button className="bg-white text-black hover:bg-zinc-200">Get started free</Button>
+              </Link>
+            </>
+          )}
         </div>
       </nav>
 

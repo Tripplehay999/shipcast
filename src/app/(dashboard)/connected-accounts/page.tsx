@@ -13,6 +13,7 @@ export default async function ConnectedAccountsPage() {
   const connected = {
     twitter: accounts?.find((a) => a.platform === "twitter") ?? null,
     linkedin: accounts?.find((a) => a.platform === "linkedin") ?? null,
+    threads: accounts?.find((a) => a.platform === "threads") ?? null,
   };
 
   return (

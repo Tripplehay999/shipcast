@@ -68,6 +68,34 @@ export async function GET(req: Request) {
           }),
         });
         if (!res.ok) throw new Error(await res.text());
+      } else if (post.platform === "threads") {
+        const containerRes = await fetch(
+          `https://graph.threads.net/v1.0/${account.platform_user_id}/threads`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              media_type: "TEXT",
+              text: post.content,
+              access_token: account.access_token,
+            }),
+          }
+        );
+        if (!containerRes.ok) throw new Error(await containerRes.text());
+        const container = await containerRes.json();
+
+        const publishRes = await fetch(
+          `https://graph.threads.net/v1.0/${account.platform_user_id}/threads_publish`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              creation_id: container.id,
+              access_token: account.access_token,
+            }),
+          }
+        );
+        if (!publishRes.ok) throw new Error(await publishRes.text());
       }
 
       await supabaseAdmin

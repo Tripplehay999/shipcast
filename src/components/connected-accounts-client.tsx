@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Twitter, Linkedin, CheckCircle2, Link2 } from "lucide-react";
+import { Twitter, Linkedin, CheckCircle2, Link2, MessageCircle } from "lucide-react";
 
 interface ConnectedAccount {
   platform_username: string;
@@ -17,6 +17,7 @@ interface Props {
   connected: {
     twitter: ConnectedAccount | null;
     linkedin: ConnectedAccount | null;
+    threads: ConnectedAccount | null;
   };
 }
 
@@ -37,6 +38,14 @@ const platforms = [
     connectUrl: "/api/auth/linkedin",
     color: "text-blue-400",
   },
+  {
+    key: "threads" as const,
+    label: "Threads",
+    icon: MessageCircle,
+    description: "Post text updates to your Threads profile.",
+    connectUrl: "/api/auth/threads",
+    color: "text-purple-400",
+  },
 ];
 
 function AccountsInner({ connected }: Props) {
@@ -45,9 +54,10 @@ function AccountsInner({ connected }: Props) {
   useEffect(() => {
     const c = searchParams.get("connected");
     const e = searchParams.get("error");
-    if (c) toast.success(`${c.charAt(0).toUpperCase() + c.slice(1)} connected successfully!`);
+    if (c) toast.success(`${c.charAt(0).toUpperCase() + c.slice(1)} connected!`);
     if (e === "twitter_denied") toast.error("Twitter connection was cancelled.");
     if (e === "linkedin_denied") toast.error("LinkedIn connection was cancelled.");
+    if (e === "threads_denied") toast.error("Threads connection was cancelled.");
     if (e === "token_exchange") toast.error("OAuth failed. Try again.");
     if (e === "invalid_state") toast.error("Session expired. Try again.");
   }, [searchParams]);
@@ -60,7 +70,7 @@ function AccountsInner({ connected }: Props) {
           <Card key={key} className="bg-zinc-900 border-zinc-800">
             <CardContent className="p-5 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className={`${color}`}>
+                <div className={color}>
                   <Icon className="h-6 w-6" />
                 </div>
                 <div>
@@ -79,20 +89,11 @@ function AccountsInner({ connected }: Props) {
               </div>
 
               {account ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-zinc-700 text-zinc-400 hover:text-white bg-transparent shrink-0"
-                  onClick={() => window.location.href = connectUrl}
-                >
+                <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400 hover:text-white bg-transparent shrink-0" onClick={() => window.location.href = connectUrl}>
                   Reconnect
                 </Button>
               ) : (
-                <Button
-                  size="sm"
-                  className="bg-white text-black hover:bg-zinc-200 shrink-0"
-                  onClick={() => window.location.href = connectUrl}
-                >
+                <Button size="sm" className="bg-white text-black hover:bg-zinc-200 shrink-0" onClick={() => window.location.href = connectUrl}>
                   <Link2 className="h-3.5 w-3.5 mr-1.5" />
                   Connect
                 </Button>
@@ -105,7 +106,7 @@ function AccountsInner({ connected }: Props) {
       <div className="mt-6 rounded-xl border border-zinc-900 bg-zinc-950 p-4">
         <p className="text-xs text-zinc-600 leading-relaxed">
           <span className="text-zinc-400">All plans</span> can link accounts. Direct posting and auto-scheduling are{" "}
-          <span className="text-zinc-400">Studio plan only</span>. Linked accounts are used when you post or schedule content from Shipcast.
+          <span className="text-zinc-400">Studio plan only</span>.
         </p>
       </div>
     </div>

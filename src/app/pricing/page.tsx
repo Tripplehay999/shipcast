@@ -1,11 +1,15 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Check, Zap } from "lucide-react";
 import { PLANS } from "@/lib/plans";
+import { auth } from "@clerk/nextjs/server";
+import { PricingButtons } from "@/components/pricing-buttons";
 
 const planKeys = ["free", "pro", "studio"] as const;
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const { userId } = await auth();
+  const isSignedIn = !!userId;
+
   return (
     <div className="min-h-screen bg-black text-white">
       <nav className="flex items-center justify-between px-6 py-5 max-w-6xl mx-auto border-b border-zinc-900">
@@ -14,12 +18,16 @@ export default function PricingPage() {
           <span className="font-bold text-lg tracking-tight">Shipcast</span>
         </Link>
         <div className="flex items-center gap-3">
-          <Link href="/sign-in">
-            <Button variant="ghost" className="text-zinc-400 hover:text-white">Sign in</Button>
-          </Link>
-          <Link href="/sign-up">
-            <Button className="bg-white text-black hover:bg-zinc-200">Get started</Button>
-          </Link>
+          {isSignedIn ? (
+            <Link href="/dashboard" className="text-sm text-zinc-400 hover:text-white transition-colors">
+              ← Back to dashboard
+            </Link>
+          ) : (
+            <>
+              <Link href="/sign-in" className="text-sm text-zinc-400 hover:text-white transition-colors">Sign in</Link>
+              <Link href="/sign-up" className="text-sm bg-white text-black px-4 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors font-medium">Get started</Link>
+            </>
+          )}
         </div>
       </nav>
 
@@ -42,9 +50,7 @@ export default function PricingPage() {
               <div
                 key={key}
                 className={`rounded-xl border p-6 flex flex-col ${
-                  isStudio
-                    ? "border-white bg-zinc-950"
-                    : "border-zinc-800 bg-zinc-950"
+                  isStudio ? "border-white bg-zinc-950" : "border-zinc-800 bg-zinc-950"
                 }`}
               >
                 {isStudio && (
@@ -75,17 +81,7 @@ export default function PricingPage() {
                   ))}
                 </ul>
 
-                <Link href={key === "free" ? "/sign-up" : `/sign-up?plan=${key}`}>
-                  <Button
-                    className={`w-full ${
-                      isStudio
-                        ? "bg-white text-black hover:bg-zinc-200"
-                        : "border border-zinc-700 bg-transparent text-white hover:bg-zinc-900"
-                    }`}
-                  >
-                    {key === "free" ? "Get started free" : `Start ${plan.name}`}
-                  </Button>
-                </Link>
+                <PricingButtons planKey={key} isSignedIn={isSignedIn} isStudio={isStudio} />
               </div>
             );
           })}
@@ -96,13 +92,14 @@ export default function PricingPage() {
             <p className="text-xs font-mono text-zinc-600 mb-2">studio plan</p>
             <h2 className="text-xl font-bold mb-2">We handle the API costs</h2>
             <p className="text-sm text-zinc-500 leading-relaxed">
-              Studio subscribers get fully managed posting. We cover the Twitter and LinkedIn API costs so you never have to think about credentials, rate limits, or integrations. Just connect your accounts and schedule.
+              Studio subscribers get fully managed posting. We cover the Twitter, Threads, and LinkedIn API costs so you never have to think about credentials, rate limits, or integrations.
             </p>
           </div>
           <div className="space-y-3">
             {[
               "Twitter / X API — covered",
               "LinkedIn API — covered",
+              "Threads API — covered",
               "Automatic retry on failure",
               "Post queue dashboard",
               "Cancel anytime",

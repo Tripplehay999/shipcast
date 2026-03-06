@@ -13,12 +13,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Studio plan required to post directly." }, { status: 403 });
     }
 
-    const { platform, content } = await req.json() as { platform: "twitter" | "linkedin"; content: string };
+    const { platform, content } = await req.json() as { platform: "twitter" | "linkedin" | "threads"; content: string };
 
     // Get connected account tokens
     const { data: account } = await supabaseAdmin
       .from("connected_accounts")
-      .select("access_token, platform_username")
+      .select("access_token, platform_username, platform_user_id")
       .eq("clerk_user_id", userId)
       .eq("platform", platform)
       .single();
@@ -83,6 +83,40 @@ export async function POST(req: Request) {
       }
 
       return NextResponse.json({ success: true });
+    }
+
+    if (platform === "threads") {
+      // Step 1: Create a media container
+      const containerRes = await fetch(
+        `https://graph.threads.net/v1.0/${account.platform_user_id ?? ""}/threads`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            media_type: "TEXT",
+            text: content,
+            access_token: account.access_token,
+          }),
+        }
+      );
+      if (!containerRes.ok) throw new Error(await containerRes.text());
+      const container = await containerRes.json();
+
+      // Step 2: Publish the container
+      const publishRes = await fetch(
+        `https://graph.threads.net/v1.0/${account.platform_user_id ?? ""}/threads_publish`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creation_id: container.id,
+            access_token: account.access_token,
+          }),
+        }
+      );
+      if (!publishRes.ok) throw new Error(await publishRes.text());
+      const published = await publishRes.json();
+      return NextResponse.json({ success: true, threadId: published.id });
     }
 
     return NextResponse.json({ error: "Unsupported platform" }, { status: 400 });
