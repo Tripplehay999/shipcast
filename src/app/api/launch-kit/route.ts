@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "@/lib/supabase";
+import { extractJson } from "@/lib/parse-json";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -107,10 +108,9 @@ Output ONLY raw JSON matching this schema exactly — no markdown, no code fence
     });
 
     const raw = message.content[0].type === "text" ? message.content[0].text : "";
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Failed to parse launch kit response");
-
-    const kit = JSON.parse(jsonMatch[0]);
+    const jsonStr = extractJson(raw);
+    if (!jsonStr) throw new Error("Failed to parse launch kit response");
+    const kit = JSON.parse(jsonStr);
     return NextResponse.json({ kit });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Launch kit generation failed";

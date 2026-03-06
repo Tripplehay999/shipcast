@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "@/lib/supabase";
 import { buildGenerationPrompt } from "@/lib/prompts";
 import { GenerateResponse } from "@/lib/types";
+import { extractJson } from "@/lib/parse-json";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -46,12 +47,12 @@ export async function POST(req: Request) {
 
     // Parse JSON from response
     let parsed: GenerateResponse;
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const jsonStr = extractJson(responseText);
+    if (!jsonStr) {
       return NextResponse.json({ error: "AI returned an unexpected format. Try again." }, { status: 500 });
     }
     try {
-      parsed = JSON.parse(jsonMatch[0]);
+      parsed = JSON.parse(jsonStr);
     } catch {
       return NextResponse.json({ error: "Failed to parse AI response. Try again." }, { status: 500 });
     }
