@@ -18,8 +18,8 @@ export async function GET() {
   const state = base64url(crypto.randomBytes(16));
 
   const cookieStore = await cookies();
-  cookieStore.set("twitter_code_verifier", codeVerifier, { httpOnly: true, secure: process.env.NODE_ENV === "production", maxAge: 600, path: "/" });
-  cookieStore.set("twitter_state", state, { httpOnly: true, secure: process.env.NODE_ENV === "production", maxAge: 600, path: "/" });
+  cookieStore.set("twitter_code_verifier", codeVerifier, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600, path: "/" });
+  cookieStore.set("twitter_state", state, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600, path: "/" });
 
   const params = new URLSearchParams({
     response_type: "code",

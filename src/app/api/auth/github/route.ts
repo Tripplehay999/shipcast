@@ -12,6 +12,7 @@ export async function GET() {
   cookieStore.set("github_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
     maxAge: 600,
     path: "/",
   });
