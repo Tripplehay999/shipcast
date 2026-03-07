@@ -354,10 +354,10 @@ function GitHubInner({
       )}
 
       {/* Settings section */}
-      <div className="border border-zinc-800 rounded-2xl overflow-hidden">
+      <div className="border border-zinc-800 rounded-2xl">
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className="w-full flex items-center justify-between px-5 py-4 bg-zinc-900/60 hover:bg-zinc-900 transition-colors"
+          className="w-full flex items-center justify-between px-5 py-4 bg-zinc-900/60 hover:bg-zinc-900 transition-colors rounded-t-2xl"
         >
           <div className="flex items-center gap-2 text-left">
             <Webhook className="h-4 w-4 text-zinc-400" />
