@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET(req: Request) {
   const { userId } = await auth();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
+  const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!;
   if (!userId) return NextResponse.redirect(`${appUrl}/sign-in`);
 
   const { searchParams } = new URL(req.url);

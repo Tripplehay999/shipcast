@@ -9,7 +9,7 @@ function base64url(buffer: Buffer) {
 
 export async function GET() {
   const { userId } = await auth();
-  if (!userId) return NextResponse.redirect(new URL("/sign-in", process.env.NEXT_PUBLIC_APP_URL!));
+  if (!userId) return NextResponse.redirect(new URL("/sign-in", process.env.APP_URL ?? process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!));
 
   const codeVerifier = base64url(crypto.randomBytes(32));
   const codeChallenge = base64url(
@@ -24,7 +24,7 @@ export async function GET() {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.TWITTER_CLIENT_ID!,
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/twitter/callback`,
+    redirect_uri: `${process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL}/api/auth/twitter/callback`,
     scope: "tweet.read tweet.write users.read offline.access",
     state,
     code_challenge: codeChallenge,

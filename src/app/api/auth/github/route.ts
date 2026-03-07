@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 
 export async function GET() {
   const { userId } = await auth();
-  if (!userId) return NextResponse.redirect(new URL("/sign-in", process.env.NEXT_PUBLIC_APP_URL!));
+  if (!userId) return NextResponse.redirect(new URL("/sign-in", process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!));
 
   const state = crypto.randomBytes(16).toString("hex");
   const cookieStore = await cookies();
@@ -19,7 +19,7 @@ export async function GET() {
 
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID!,
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/github/callback`,
+    redirect_uri: `${process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL}/api/auth/github/callback`,
     scope: "repo",
     state,
   });
