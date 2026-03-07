@@ -19,15 +19,15 @@ export async function POST(req: Request) {
 
   const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!;
 
-  // Remove old webhook if switching repos
-  if (conn.webhook_id && conn.repo_full_name && conn.repo_full_name !== repoFullName) {
+  // Always delete any existing webhook — ensures URL is always fresh
+  if (conn.webhook_id && conn.repo_full_name) {
     await fetch(`https://api.github.com/repos/${conn.repo_full_name}/hooks/${conn.webhook_id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${conn.access_token}`, Accept: "application/vnd.github+json" },
     });
   }
 
-  // Create webhook on the new repo
+  // Create webhook on the selected repo
   const hookRes = await fetch(`https://api.github.com/repos/${repoFullName}/hooks`, {
     method: "POST",
     headers: {
@@ -47,18 +47,24 @@ export async function POST(req: Request) {
     }),
   });
 
-  const hookData = hookRes.ok ? await hookRes.json() : null;
+  if (!hookRes.ok) {
+    const err = await hookRes.json().catch(() => ({}));
+    const message = err?.message ?? `GitHub API error ${hookRes.status}`;
+    return NextResponse.json({ error: `Webhook install failed: ${message}` }, { status: 400 });
+  }
+
+  const hookData = await hookRes.json();
 
   await supabaseAdmin.from("github_connections").upsert(
     {
       clerk_user_id: userId,
       repo_full_name: repoFullName,
-      webhook_id: hookData?.id?.toString() ?? null,
+      webhook_id: hookData.id?.toString() ?? null,
       auto_generate: autoGenerate ?? true,
       auto_schedule: autoSchedule ?? false,
     },
     { onConflict: "clerk_user_id" }
   );
 
-  return NextResponse.json({ success: true, webhookCreated: !!hookData });
+  return NextResponse.json({ success: true, webhookUrl: `${appUrl}/api/webhooks/github` });
 }

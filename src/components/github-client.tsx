@@ -66,7 +66,7 @@ function GitHubInner({ connection }: { connection: Connection | null }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Save failed");
-      toast.success(`Watching ${selectedRepo}`);
+      toast.success(`Webhook installed on ${selectedRepo}. Push a feat: or fix: commit to test it.`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
