@@ -1,17 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getUserPlan } from "@/lib/stripe";
 
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const plan = await getUserPlan(userId);
-    if (plan !== "studio") {
-      return NextResponse.json({ error: "Studio plan required for scheduling." }, { status: 403 });
-    }
 
     const { platform, content, scheduledAt, updateId } = await req.json() as {
       platform: "twitter" | "linkedin";

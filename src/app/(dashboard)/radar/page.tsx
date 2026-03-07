@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import Link from "next/link";
 import {
   Radio, RefreshCw, Loader2, Twitter, Linkedin,
-  GitBranch, Copy, Check, ArrowRight, Zap,
+  GitBranch, Copy, Check, Zap, CalendarClock, CheckCircle2,
 } from "lucide-react";
 
 interface Suggestion {
@@ -25,10 +26,10 @@ interface CachedRadar {
 
 const CACHE_KEY = "shipcast_radar_cache";
 
-const PLATFORM_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  tweet:    { label: "Tweet",    icon: Twitter,   color: "text-sky-400",    bg: "bg-sky-500/10 border-sky-500/20" },
-  linkedin: { label: "LinkedIn", icon: Linkedin,  color: "text-blue-400",   bg: "bg-blue-500/10 border-blue-500/20" },
-  thread:   { label: "Thread",   icon: GitBranch, color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
+const PLATFORM_META: Record<string, { label: string; icon: React.ElementType; color: string; bg: string; schedPlatform: string }> = {
+  tweet:    { label: "Tweet",    icon: Twitter,   color: "text-sky-400",    bg: "bg-sky-500/10 border-sky-500/20",       schedPlatform: "twitter" },
+  linkedin: { label: "LinkedIn", icon: Linkedin,  color: "text-blue-400",   bg: "bg-blue-500/10 border-blue-500/20",     schedPlatform: "linkedin" },
+  thread:   { label: "Thread",   icon: GitBranch, color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20", schedPlatform: "twitter" },
 };
 
 const LOADING_STEPS = [
@@ -44,7 +45,7 @@ function CopyBtn({ text }: { text: string }) {
   return (
     <button onClick={copy} className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-white transition-colors">
       {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-      {copied ? "Copied" : "Copy hook"}
+      {copied ? "Copied" : "Copy"}
     </button>
   );
 }
@@ -53,13 +54,51 @@ function SuggestionCard({ s, index }: { s: Suggestion; index: number }) {
   const meta = PLATFORM_META[s.platform] ?? PLATFORM_META.tweet;
   const Icon = meta.icon;
 
-  const useAngle = () => {
-    sessionStorage.setItem("shipcast_prefill", s.hook);
-    window.location.href = "/new-update";
+  const [state, setState] = useState<"idle" | "generating" | "queued">("idle");
+  const [queuedContent, setQueuedContent] = useState<string | null>(null);
+
+  const addToQueue = async () => {
+    setState("generating");
+    try {
+      // Generate content from the hook
+      const genRes = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rawUpdate: s.hook }),
+      });
+      const genData = await genRes.json().catch(() => ({}));
+      if (!genRes.ok) throw new Error(genData.error ?? "Generation failed");
+
+      const content = genData.content?.tweet ?? s.hook;
+
+      // Schedule for tomorrow at 9am
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+
+      const schedRes = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: meta.schedPlatform,
+          content,
+          scheduledAt: tomorrow.toISOString(),
+        }),
+      });
+      const schedData = await schedRes.json().catch(() => ({}));
+      if (!schedRes.ok) throw new Error(schedData.error ?? "Queue failed");
+
+      setQueuedContent(content);
+      setState("queued");
+      toast.success("Added to Post Queue for tomorrow 9am!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      setState("idle");
+    }
   };
 
   return (
-    <div className="border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-colors">
+    <div className={`border rounded-2xl overflow-hidden transition-colors ${state === "queued" ? "border-emerald-500/30" : "border-zinc-800 hover:border-zinc-700"}`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-3 px-5 py-4 bg-zinc-900/60 border-b border-zinc-800">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -94,16 +133,44 @@ function SuggestionCard({ s, index }: { s: Suggestion; index: number }) {
           <p className="text-xs text-zinc-500 leading-relaxed">{s.why_now}</p>
         </div>
 
+        {/* Queued state */}
+        {state === "queued" && queuedContent && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+              <p className="text-xs font-medium text-emerald-400">Queued for tomorrow at 9am</p>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed line-clamp-3">{queuedContent}</p>
+          </div>
+        )}
+
+        {/* Actions */}
         <div className="flex items-center justify-between pt-1">
           <CopyBtn text={s.hook} />
-          <Button
-            onClick={useAngle}
-            size="sm"
-            className="bg-white text-black hover:bg-zinc-200 h-8 text-xs font-semibold gap-1.5"
-          >
-            Use this angle — generate post
-            <ArrowRight className="h-3 w-3" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {state === "queued" ? (
+              <Link
+                href="/schedule"
+                className="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <CalendarClock className="h-3 w-3" />
+                View in Post Queue
+              </Link>
+            ) : (
+              <Button
+                onClick={addToQueue}
+                disabled={state === "generating"}
+                size="sm"
+                className="bg-white text-black hover:bg-zinc-200 h-8 text-xs font-semibold gap-1.5"
+              >
+                {state === "generating" ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" />Generating…</>
+                ) : (
+                  <><CalendarClock className="h-3 w-3" />Queue this post</>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -139,7 +206,6 @@ export default function RadarPage() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [storiesAnalyzed, setStoriesAnalyzed] = useState(0);
 
-  // Load cache from localStorage on mount — never auto-fetch
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
@@ -149,9 +215,7 @@ export default function RadarPage() {
         setFetchedAt(cached.fetchedAt);
         setStoriesAnalyzed(cached.storiesAnalyzed);
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, []);
 
   const scan = async () => {
@@ -170,9 +234,7 @@ export default function RadarPage() {
         storiesAnalyzed: data.storiesAnalyzed ?? 0,
       };
 
-      // Save to localStorage
       localStorage.setItem(CACHE_KEY, JSON.stringify(result));
-
       setSuggestions(result.suggestions);
       setFetchedAt(result.fetchedAt);
       setStoriesAnalyzed(result.storiesAnalyzed);
@@ -188,23 +250,21 @@ export default function RadarPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2.5 mb-2">
           <Radio className="h-5 w-5 text-white" />
           <h1 className="text-2xl font-bold">Startup Radar</h1>
         </div>
         <p className="text-zinc-500 text-sm leading-relaxed">
-          Scans trending startup topics from Hacker News and generates personalized post angles for your product.
+          Scans trending startup topics from Hacker News and generates post angles for your product. Click <span className="text-white">Queue this post</span> to generate and schedule it automatically.
         </p>
       </div>
 
-      {/* Controls */}
       <div className="flex items-center justify-between mb-6">
         <div>
           {fetchedAt && (
             <p className="text-xs text-zinc-600">
-              {storiesAnalyzed} stories analyzed · last scanned {new Date(fetchedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+              {storiesAnalyzed} stories analyzed · {new Date(fetchedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
         </div>
@@ -226,7 +286,6 @@ export default function RadarPage() {
         </Button>
       </div>
 
-      {/* Empty state */}
       {!loading && !hasResults && (
         <div className="border border-zinc-800 rounded-2xl p-12 text-center space-y-4">
           <div className="h-12 w-12 rounded-full border border-zinc-800 bg-zinc-900 flex items-center justify-center mx-auto">
@@ -235,7 +294,7 @@ export default function RadarPage() {
           <div className="space-y-2">
             <p className="text-sm font-medium text-zinc-300">Ready to scan</p>
             <p className="text-xs text-zinc-600 max-w-xs mx-auto leading-relaxed">
-              Click &ldquo;Scan trends now&rdquo; to fetch the latest startup discussions and get personalized post angles — ready to publish in one click.
+              Scan trending topics → pick an angle → one click to generate and queue the post for tomorrow.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 justify-center pt-2">
@@ -246,14 +305,12 @@ export default function RadarPage() {
         </div>
       )}
 
-      {/* Loading */}
       {loading && <LoadingState step={loadingStep} />}
 
-      {/* Results */}
       {!loading && hasResults && (
         <div className="space-y-4">
           <p className="text-xs text-zinc-600 uppercase tracking-widest font-semibold">
-            {suggestions.length} angles ready · click to generate &amp; publish
+            {suggestions.length} trending angles · click to generate &amp; queue
           </p>
           {suggestions.map((s, i) => (
             <SuggestionCard key={i} s={s} index={i} />
