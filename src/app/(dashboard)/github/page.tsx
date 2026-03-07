@@ -6,11 +6,19 @@ import { Github } from "lucide-react";
 export default async function GitHubPage() {
   const { userId } = await auth();
 
-  const { data: conn } = await supabaseAdmin
-    .from("github_connections")
-    .select("repo_full_name, auto_generate, auto_schedule, created_at")
-    .eq("clerk_user_id", userId)
-    .single();
+  const [{ data: conn }, { data: notifications }] = await Promise.all([
+    supabaseAdmin
+      .from("github_connections")
+      .select("repo_full_name, auto_generate, auto_schedule, created_at")
+      .eq("clerk_user_id", userId!)
+      .single(),
+    supabaseAdmin
+      .from("github_notifications")
+      .select("*")
+      .eq("clerk_user_id", userId!)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false }),
+  ]);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -20,10 +28,13 @@ export default async function GitHubPage() {
           <h1 className="text-2xl font-bold">GitHub Integration</h1>
         </div>
         <p className="text-zinc-500 text-sm leading-relaxed">
-          Connect your repo and Shipcast automatically turns <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">feat:</code> and <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">fix:</code> commits into marketing content the moment you push.
+          Connect your repo and Shipcast detects{" "}
+          <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">feat:</code> and{" "}
+          <code className="text-zinc-400 bg-zinc-800 px-1 rounded text-xs">fix:</code> commits —
+          then prompts you to generate marketing content with one click.
         </p>
       </div>
-      <GitHubClient connection={conn} />
+      <GitHubClient connection={conn} initialNotifications={notifications ?? []} />
     </div>
   );
 }

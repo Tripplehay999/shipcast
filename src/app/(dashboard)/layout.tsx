@@ -5,37 +5,33 @@ import { LayoutDashboard, PlusCircle, History, Settings, Zap, Link2, CalendarClo
 import { supabaseAdmin } from "@/lib/supabase";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/new-update", label: "New Update", icon: PlusCircle },
-  { href: "/launch-kit", label: "Launch Kit", icon: Rocket },
-  { href: "/history", label: "History", icon: History },
-  { href: "/connected-accounts", label: "Accounts", icon: Link2 },
-  { href: "/schedule", label: "Post Queue", icon: CalendarClock },
-  { href: "/github", label: "GitHub", icon: Github },
-  { href: "/radar", label: "Startup Radar", icon: Radio },
+  { href: "/dashboard",          label: "Dashboard",     icon: LayoutDashboard },
+  { href: "/new-update",         label: "New Update",    icon: PlusCircle },
+  { href: "/launch-kit",         label: "Launch Kit",    icon: Rocket },
+  { href: "/history",            label: "History",       icon: History },
+  { href: "/connected-accounts", label: "Accounts",      icon: Link2 },
+  { href: "/schedule",           label: "Post Queue",    icon: CalendarClock },
+  { href: "/radar",              label: "Startup Radar", icon: Radio },
 ];
 
 const bottomItems = [
-  { href: "/pricing", label: "Upgrade Plan", icon: CreditCard },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/pricing",  label: "Upgrade Plan", icon: CreditCard },
+  { href: "/settings", label: "Settings",     icon: Settings },
 ];
 
-const planBadge: Record<string, string> = {
-  free: "Free",
-  pro: "Pro",
-  studio: "Studio",
-};
+const planBadge: Record<string, string> = { free: "Free", pro: "Pro", studio: "Studio" };
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { userId } = await auth();
 
-  const { data: sub } = await supabaseAdmin
-    .from("subscriptions")
-    .select("plan")
-    .eq("clerk_user_id", userId)
-    .single();
+  const [{ data: sub }, { count: pendingNotifs }] = await Promise.all([
+    supabaseAdmin.from("subscriptions").select("plan").eq("clerk_user_id", userId!).single(),
+    supabaseAdmin.from("github_notifications").select("id", { count: "exact", head: true })
+      .eq("clerk_user_id", userId!).eq("status", "pending"),
+  ]);
 
   const plan = sub?.plan ?? "free";
+  const notifCount = pendingNotifs ?? 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex">
@@ -55,10 +51,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
               href={href}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-4 w-4 shrink-0" />
               {label}
             </Link>
           ))}
+
+          {/* GitHub — with pending notification badge */}
+          <Link
+            href="/github"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+          >
+            <Github className="h-4 w-4 shrink-0" />
+            GitHub
+            {notifCount > 0 && (
+              <span className="ml-auto flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">
+                {notifCount > 9 ? "9+" : notifCount}
+              </span>
+            )}
+          </Link>
         </nav>
 
         <div className="space-y-1 mb-3">

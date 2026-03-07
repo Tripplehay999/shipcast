@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase";
-import Anthropic from "@anthropic-ai/sdk";
-import { buildGenerationPrompt } from "@/lib/prompts";
-import { extractJson } from "@/lib/parse-json";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-
-// Only process these conventional commit prefixes
 const MARKETING_PREFIXES = ["feat:", "fix:", "perf:", "launch:", "release:"];
 
 function isMarketingCommit(message: string): boolean {
@@ -15,22 +9,27 @@ function isMarketingCommit(message: string): boolean {
 }
 
 function parseCommitMessage(msg: string): string {
-  // Strip prefix and scope: "feat(auth): add OAuth" → "add OAuth"
   return msg.replace(/^(feat|fix|perf|launch|release)(\([^)]+\))?:\s*/i, "").trim();
 }
 
-function buildUpdateSummary(commits: string[]): string {
+function buildSummary(commits: string[]): string {
   if (commits.length === 1) return commits[0];
   if (commits.length <= 3) return commits.join(", ");
   return `${commits.slice(0, 2).join(", ")}, and ${commits.length - 2} more improvements`;
 }
 
 function verifySignature(payload: string, signature: string): boolean {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET!;
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (!secret) { console.error("[gh-webhook] GITHUB_WEBHOOK_SECRET not set"); return false; }
+  if (!signature) { console.error("[gh-webhook] No signature header"); return false; }
   const expected = `sha256=${crypto.createHmac("sha256", secret).update(payload).digest("hex")}`;
   try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length) { console.error("[gh-webhook] Sig length mismatch", sigBuf.length, expBuf.length); return false; }
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch (e) {
+    console.error("[gh-webhook] timingSafeEqual error:", e);
     return false;
   }
 }
@@ -38,98 +37,77 @@ function verifySignature(payload: string, signature: string): boolean {
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const sig = req.headers.get("x-hub-signature-256") ?? "";
+  const event = req.headers.get("x-github-event");
+
+  console.log("[gh-webhook] event:", event, "sig:", sig.slice(0, 30));
 
   if (!verifySignature(rawBody, sig)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const event = req.headers.get("x-github-event");
-  if (event !== "push") return NextResponse.json({ ok: true });
-
-  let payload: { repository: { full_name: string }; commits: Array<{ message: string }>; ref: string };
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  // GitHub ping on webhook creation
+  if (event === "ping") {
+    console.log("[gh-webhook] Ping OK");
+    return NextResponse.json({ ok: true, pong: true });
   }
 
-  // Only process pushes to main/master
+  if (event !== "push") return NextResponse.json({ ok: true });
+
+  let payload: {
+    repository: { full_name: string };
+    commits: Array<{ message: string }>;
+    ref: string;
+  };
+  try { payload = JSON.parse(rawBody); }
+  catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+
   const branch = payload.ref.replace("refs/heads/", "");
-  if (!["main", "master"].includes(branch)) return NextResponse.json({ ok: true });
+  console.log("[gh-webhook] branch:", branch, "repo:", payload.repository.full_name);
+
+  if (!["main", "master"].includes(branch)) {
+    return NextResponse.json({ ok: true, skipped: `branch=${branch}` });
+  }
 
   const repoFullName = payload.repository.full_name;
 
-  // Find the user with this repo connected
   const { data: conn } = await supabaseAdmin
     .from("github_connections")
-    .select("clerk_user_id, auto_generate")
+    .select("clerk_user_id")
     .eq("repo_full_name", repoFullName)
     .single();
 
-  if (!conn || !conn.auto_generate) return NextResponse.json({ ok: true });
+  if (!conn) {
+    console.error("[gh-webhook] No connection for repo:", repoFullName);
+    return NextResponse.json({ ok: true, skipped: "no connection" });
+  }
 
-  // Filter to marketing-relevant commits
   const marketingCommits = payload.commits
-    .map((c) => c.message.split("\n")[0].trim()) // first line only
+    .map((c) => c.message.split("\n")[0].trim())
     .filter(isMarketingCommit)
     .map(parseCommitMessage)
     .filter(Boolean);
 
-  if (!marketingCommits.length) return NextResponse.json({ ok: true, skipped: "no marketing commits" });
+  console.log("[gh-webhook] Marketing commits:", marketingCommits);
 
-  const summary = buildUpdateSummary(marketingCommits);
-
-  // Get user profile
-  const { data: profile } = await supabaseAdmin
-    .from("profiles")
-    .select("*")
-    .eq("clerk_user_id", conn.clerk_user_id)
-    .single();
-
-  const prompt = buildGenerationPrompt({
-    rawUpdate: summary,
-    productName: profile?.product_name ?? "the product",
-    productDescription: profile?.product_description ?? "",
-    brandVoice: profile?.brand_voice ?? "casual",
-    examplePosts: profile?.example_posts ?? [],
-  });
-
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 3500,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const responseText = message.content[0].type === "text" ? message.content[0].text : "";
-  const jsonStr = extractJson(responseText);
-  if (!jsonStr) return NextResponse.json({ error: "AI parse failed" }, { status: 500 });
-
-  const parsed = JSON.parse(jsonStr);
-
-  // Save update
-  const { data: update } = await supabaseAdmin
-    .from("updates")
-    .insert({
-      clerk_user_id: conn.clerk_user_id,
-      raw_update: `[GitHub] ${summary}`,
-    })
-    .select()
-    .single();
-
-  if (update) {
-    await supabaseAdmin.from("generated_content").insert({
-      update_id: update.id,
-      tweet: parsed.tweet,
-      thread: parsed.thread,
-      linkedin: parsed.linkedin,
-      reddit: parsed.reddit,
-      indie_hackers: parsed.indie_hackers,
-      blog_draft: parsed.blog_draft ?? null,
-      email_subject: parsed.email_subject ?? null,
-      email_body: parsed.email_body ?? null,
-      changelog_entry: parsed.changelog_entry ?? null,
-    });
+  if (!marketingCommits.length) {
+    return NextResponse.json({ ok: true, skipped: "no marketing commits" });
   }
 
-  return NextResponse.json({ ok: true, update_id: update?.id, commits_processed: marketingCommits.length });
+  const summary = buildSummary(marketingCommits);
+
+  const { error } = await supabaseAdmin.from("github_notifications").insert({
+    clerk_user_id: conn.clerk_user_id,
+    repo_full_name: repoFullName,
+    commit_messages: marketingCommits,
+    summary,
+    status: "pending",
+  });
+
+  if (error) {
+    console.error("[gh-webhook] DB insert error:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  console.log("[gh-webhook] Notification saved for:", conn.clerk_user_id);
+  return NextResponse.json({ ok: true, commits: marketingCommits.length });
 }
