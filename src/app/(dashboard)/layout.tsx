@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { UserButton, SignOutButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
-import { LayoutDashboard, PlusCircle, History, Settings, Zap, Link2, CalendarClock, CreditCard, Rocket, LogOut, Github } from "lucide-react";
+import { LayoutDashboard, PlusCircle, History, Settings, Zap, Link2, CalendarClock, CreditCard, Rocket, LogOut, Github, Radio } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase";
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { href: "/connected-accounts", label: "Accounts", icon: Link2 },
   { href: "/schedule", label: "Post Queue", icon: CalendarClock },
   { href: "/github", label: "GitHub", icon: Github },
+  { href: "/radar", label: "Startup Radar", icon: Radio },
 ];
 
 const bottomItems = [

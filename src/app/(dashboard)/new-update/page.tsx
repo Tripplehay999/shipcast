@@ -20,7 +20,10 @@ function NewUpdateInner() {
 
   useEffect(() => {
     const q = searchParams.get("q");
-    if (q) setRawUpdate(q);
+    if (q) { setRawUpdate(q); return; }
+    // Pick up prefill from Startup Radar "Use this angle"
+    const prefill = sessionStorage.getItem("shipcast_prefill");
+    if (prefill) { setRawUpdate(prefill); sessionStorage.removeItem("shipcast_prefill"); }
   }, [searchParams]);
 
   const handleGenerate = async () => {
