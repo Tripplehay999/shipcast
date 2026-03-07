@@ -252,31 +252,35 @@ export function LaunchKitDisplay({ kit, productName }: { kit: LaunchKit; product
       </Section>
 
       {/* Image prompts */}
-      <Section title="Image generation" icon={Image} badge="Coming soon" defaultOpen={false}>
+      <Section title="Image generation" icon={Image} badge="Coming soon" defaultOpen={true}>
         <div className="px-5 py-5 space-y-4">
-          <p className="text-xs text-zinc-500">
-            AI-generated launch visuals are on the roadmap. Copy these prompts into Midjourney or DALL-E now.
-          </p>
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+            <Sparkles className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-medium text-amber-300">Coming soon — AI image generation</p>
+              <p className="text-xs text-zinc-500 mt-0.5">We&apos;ll generate these automatically. For now, copy the prompt into Midjourney or DALL-E.</p>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "OG / Social share", size: "1200×628", prompt: kit.image_prompts.og_image },
-              { label: "Product Hunt thumbnail", size: "480×480", prompt: kit.image_prompts.product_hunt_thumbnail },
-              { label: "Twitter header", size: "1500×500", prompt: kit.image_prompts.twitter_header },
-              { label: "LinkedIn banner", size: "1584×396", prompt: kit.image_prompts.linkedin_banner },
+              { label: "OG / Social share",      size: "1200×628",  prompt: kit.image_prompts.og_image },
+              { label: "Product Hunt thumbnail",  size: "480×480",   prompt: kit.image_prompts.product_hunt_thumbnail },
+              { label: "Twitter header",          size: "1500×500",  prompt: kit.image_prompts.twitter_header },
+              { label: "LinkedIn banner",         size: "1584×396",  prompt: kit.image_prompts.linkedin_banner },
             ].map(({ label, size, prompt }) => (
-              <div key={label} className="border border-zinc-800 rounded-lg p-3 bg-zinc-900/40 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-medium text-zinc-300">{label}</p>
-                    <p className="text-[10px] text-zinc-600 font-mono">{size}</p>
+              <div key={label} className="border border-zinc-800 rounded-xl bg-zinc-900/40 overflow-hidden">
+                {/* Preview placeholder */}
+                <div className="aspect-video bg-gradient-to-br from-zinc-800/60 to-zinc-900 flex flex-col items-center justify-center gap-1.5 relative">
+                  <Image className="h-5 w-5 text-zinc-600" />
+                  <span className="text-[10px] text-zinc-600 font-mono">{size}</span>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[9px] font-semibold text-zinc-500 bg-zinc-900/80 border border-zinc-700 px-2 py-0.5 rounded-full tracking-widest uppercase">Coming Soon</span>
                   </div>
-                  <span className="text-[9px] bg-zinc-800 text-zinc-500 border border-zinc-700 px-1.5 py-0.5 rounded-full shrink-0">Soon</span>
                 </div>
-                <div className="aspect-video rounded bg-zinc-800/40 flex items-center justify-center">
-                  <Image className="h-4 w-4 text-zinc-700" />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] text-zinc-600 leading-relaxed line-clamp-2 flex-1">{prompt}</p>
+                {/* Label + prompt + copy */}
+                <div className="p-3 space-y-2">
+                  <p className="text-xs font-medium text-zinc-300">{label}</p>
+                  <p className="text-[11px] text-zinc-600 leading-relaxed line-clamp-3">{prompt}</p>
                   <CopyButton text={prompt} />
                 </div>
               </div>

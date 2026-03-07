@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
   if (!conn) return NextResponse.json({ error: "GitHub not connected" }, { status: 400 });
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
+  const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!;
 
   // Remove old webhook if switching repos
   if (conn.webhook_id && conn.repo_full_name && conn.repo_full_name !== repoFullName) {
