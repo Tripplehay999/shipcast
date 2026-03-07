@@ -17,7 +17,6 @@ import {
   AlertCircle,
   GitCommit,
   Sparkles,
-  CalendarClock,
   ImageIcon,
   X,
 } from "lucide-react";
@@ -429,13 +428,6 @@ function GitHubInner({
                   </div>
                 )}
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-              <CalendarClock className="h-4 w-4 text-purple-400 shrink-0" />
-              <p className="text-xs text-zinc-500">
-                Generated posts are scheduled for <span className="text-zinc-300">tomorrow at 9am</span> in your Post Queue.
-              </p>
             </div>
 
             <Button
