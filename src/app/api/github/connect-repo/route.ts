@@ -8,6 +8,9 @@ export async function POST(req: Request) {
 
   const { repoFullName, autoGenerate, autoSchedule } = await req.json();
   if (!repoFullName) return NextResponse.json({ error: "repo_full_name required" }, { status: 400 });
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repoFullName)) {
+    return NextResponse.json({ error: "Invalid repo name" }, { status: 400 });
+  }
 
   const { data: conn } = await supabaseAdmin
     .from("github_connections")
