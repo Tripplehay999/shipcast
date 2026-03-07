@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     // Call Claude
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2048,
+      max_tokens: 3500,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -76,6 +76,10 @@ export async function POST(req: Request) {
       linkedin: parsed.linkedin,
       reddit: parsed.reddit,
       indie_hackers: parsed.indie_hackers,
+      blog_draft: parsed.blog_draft ?? null,
+      email_subject: parsed.email_subject ?? null,
+      email_body: parsed.email_body ?? null,
+      changelog_entry: parsed.changelog_entry ?? null,
     });
 
     return NextResponse.json({ content: parsed, updateId: update.id });

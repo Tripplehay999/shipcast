@@ -35,7 +35,11 @@ Generate marketing content in exactly this JSON format. No markdown, no explanat
   ],
   "linkedin": "A LinkedIn post. 150-250 words. Start with a bold first line (no 'I'm excited to announce'). Tell the story of building it. End with a question to drive comments. Use short paragraphs and line breaks for readability.",
   "reddit": "A Reddit post designed to feel like genuine community engagement, not marketing. Ask for feedback or opinions. Sound like a builder sharing honestly, not a founder pitching. 100-150 words. Works for r/SaaS or r/startups.",
-  "indie_hackers": "An Indie Hackers style update. 100-150 words. Honest about the process. What you built, why, what you learned. Milestones and metrics if relevant. Feels like a real progress update not a press release."
+  "indie_hackers": "An Indie Hackers style update. 100-150 words. Honest about the process. What you built, why, what you learned. Milestones and metrics if relevant. Feels like a real progress update not a press release.",
+  "blog_draft": "A blog article draft. 500-700 words. Structure: opening hook paragraph (the problem or insight), then ## The Problem, ## What We Built (specific details), ## How It Works (brief technical), ## What This Means For You, closing CTA paragraph. Use markdown ## headers. Write in the founder's voice. Specific, not generic.",
+  "email_subject": "Email subject line for announcing this update to subscribers. Under 50 chars. Curiosity-driven or direct value. No ALL CAPS.",
+  "email_body": "Email newsletter update. 180-220 words. Warm opener. What was built and why it matters to them specifically. 2-3 concrete things they can now do. CTA with [LINK] placeholder. Brief P.S. with a behind-the-scenes detail.",
+  "changelog_entry": "User-facing changelog entry. Under 80 words. Start with 'v[YYYY-MM-DD] —' then a one-line bold summary, then 3-4 bullets written from user perspective ('You can now...', 'Fixed an issue where...', 'Improved...'). No internal jargon."
 }
 
 Rules:

@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getUserPlan } from "@/lib/stripe";
 import { PlanGate } from "@/components/plan-gate";
-import { ScheduleClient } from "@/components/schedule-client";
+import { ContentCalendar } from "@/components/content-calendar";
 
 export default async function SchedulePage() {
   const { userId } = await auth();
@@ -15,16 +15,16 @@ export default async function SchedulePage() {
     .order("scheduled_at", { ascending: true });
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">Post queue</h1>
+        <h1 className="text-2xl font-bold">Post Queue</h1>
         <p className="text-zinc-500 text-sm mt-1">
-          Scheduled posts for Twitter and LinkedIn. Studio plan only.
+          Scheduled posts across Twitter, LinkedIn, and Threads. Studio plan only.
         </p>
       </div>
 
       <PlanGate requiredPlan="studio" currentPlan={plan} featureName="Auto-scheduling & direct posting">
-        <ScheduleClient posts={posts ?? []} />
+        <ContentCalendar posts={posts ?? []} />
       </PlanGate>
     </div>
   );

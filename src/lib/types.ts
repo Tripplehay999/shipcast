@@ -26,6 +26,10 @@ export interface GeneratedContent {
   linkedin: string;
   reddit: string;
   indie_hackers: string;
+  blog_draft: string;
+  email_subject: string;
+  email_body: string;
+  changelog_entry: string;
   created_at: string;
 }
 
@@ -43,4 +47,17 @@ export interface GenerateResponse {
   linkedin: string;
   reddit: string;
   indie_hackers: string;
+  blog_draft: string;
+  email_subject: string;
+  email_body: string;
+  changelog_entry: string;
+}
+
+export interface ContentPlanDay {
+  day: number;
+  format: "tweet" | "thread" | "linkedin" | "reddit" | "indie_hackers" | "blog_draft" | "email_body";
+  topic: string;
+  hook: string;
+  draft: string;
+  scheduled_post_id?: string | null;
 }

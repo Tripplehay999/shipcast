@@ -13,6 +13,10 @@ interface GeneratedContent {
   linkedin: string;
   reddit: string;
   indie_hackers: string;
+  blog_draft?: string;
+  email_subject?: string;
+  email_body?: string;
+  changelog_entry?: string;
 }
 
 interface Update {
@@ -59,11 +63,15 @@ function HistoryItem({ update }: { update: Update }) {
         {expanded && gc && (
           <div className="px-4 pb-4">
             <ContentTabs content={{
-              tweet: gc.tweet,
+              tweet: gc.tweet ?? "",
               thread: Array.isArray(gc.thread) ? gc.thread : [],
-              linkedin: gc.linkedin,
-              reddit: gc.reddit,
-              indie_hackers: gc.indie_hackers,
+              linkedin: gc.linkedin ?? "",
+              reddit: gc.reddit ?? "",
+              indie_hackers: gc.indie_hackers ?? "",
+              blog_draft: gc.blog_draft ?? "",
+              email_subject: gc.email_subject ?? "",
+              email_body: gc.email_body ?? "",
+              changelog_entry: gc.changelog_entry ?? "",
             }} />
           </div>
         )}
