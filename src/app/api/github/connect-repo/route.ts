@@ -18,8 +18,15 @@ export async function POST(req: Request) {
   if (!conn) return NextResponse.json({ error: "GitHub not connected" }, { status: 400 });
 
   const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!;
+  const webhookUrl = `${appUrl}/api/webhooks/github`;
 
-  // Save settings to DB first so they always persist regardless of webhook outcome
+  const ghHeaders = {
+    Authorization: `Bearer ${conn.access_token}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+  };
+
+  // Save settings first so they always persist
   await supabaseAdmin.from("github_connections").upsert(
     {
       clerk_user_id: userId,
@@ -30,50 +37,64 @@ export async function POST(req: Request) {
     { onConflict: "clerk_user_id" }
   );
 
-  // Delete any existing webhook (always refresh to ensure correct URL)
-  if (conn.webhook_id && conn.repo_full_name) {
+  // List ALL existing hooks on this repo and delete any pointing to our URL
+  // This handles cases where webhook_id wasn't saved from a previous attempt
+  const listRes = await fetch(`https://api.github.com/repos/${repoFullName}/hooks?per_page=100`, {
+    headers: ghHeaders,
+  });
+
+  if (listRes.ok) {
+    const existingHooks: Array<{ id: number; config: { url: string } }> = await listRes.json().catch(() => []);
+    const toDelete = existingHooks.filter((h) => h.config?.url === webhookUrl);
+    await Promise.all(
+      toDelete.map((h) =>
+        fetch(`https://api.github.com/repos/${repoFullName}/hooks/${h.id}`, {
+          method: "DELETE",
+          headers: ghHeaders,
+        })
+      )
+    );
+  }
+
+  // Also delete the stored webhook on old repo if switching repos
+  if (conn.webhook_id && conn.repo_full_name && conn.repo_full_name !== repoFullName) {
     await fetch(`https://api.github.com/repos/${conn.repo_full_name}/hooks/${conn.webhook_id}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${conn.access_token}`, Accept: "application/vnd.github+json" },
+      headers: ghHeaders,
     });
   }
 
   // Install fresh webhook
   const hookRes = await fetch(`https://api.github.com/repos/${repoFullName}/hooks`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${conn.access_token}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-    },
+    headers: ghHeaders,
     body: JSON.stringify({
       name: "web",
       active: true,
       events: ["push"],
       config: {
-        url: `${appUrl}/api/webhooks/github`,
+        url: webhookUrl,
         content_type: "json",
         secret: process.env.GITHUB_WEBHOOK_SECRET!,
+        insecure_ssl: "0",
       },
     }),
   });
 
   if (!hookRes.ok) {
     const err = await hookRes.json().catch(() => ({}));
-    const message = err?.message ?? `GitHub API error ${hookRes.status}`;
-    // Settings saved but webhook failed — return error so user knows
+    const details = err?.errors?.[0]?.message ?? err?.message ?? `GitHub API ${hookRes.status}`;
     return NextResponse.json(
-      { error: `Settings saved, but webhook install failed: ${message}. Make sure you authorized repo access.` },
+      { error: `Webhook install failed: ${details}` },
       { status: 400 }
     );
   }
 
   const hookData = await hookRes.json();
 
-  // Save webhook ID
   await supabaseAdmin.from("github_connections")
     .update({ webhook_id: hookData.id?.toString() ?? null })
     .eq("clerk_user_id", userId);
 
-  return NextResponse.json({ success: true, webhookUrl: `${appUrl}/api/webhooks/github` });
+  return NextResponse.json({ success: true, webhookUrl });
 }
