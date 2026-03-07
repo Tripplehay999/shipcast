@@ -19,7 +19,18 @@ export async function POST(req: Request) {
 
   const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL!;
 
-  // Always delete any existing webhook — ensures URL is always fresh
+  // Save settings to DB first so they always persist regardless of webhook outcome
+  await supabaseAdmin.from("github_connections").upsert(
+    {
+      clerk_user_id: userId,
+      repo_full_name: repoFullName,
+      auto_generate: autoGenerate ?? true,
+      auto_schedule: autoSchedule ?? false,
+    },
+    { onConflict: "clerk_user_id" }
+  );
+
+  // Delete any existing webhook (always refresh to ensure correct URL)
   if (conn.webhook_id && conn.repo_full_name) {
     await fetch(`https://api.github.com/repos/${conn.repo_full_name}/hooks/${conn.webhook_id}`, {
       method: "DELETE",
@@ -27,7 +38,7 @@ export async function POST(req: Request) {
     });
   }
 
-  // Create webhook on the selected repo
+  // Install fresh webhook
   const hookRes = await fetch(`https://api.github.com/repos/${repoFullName}/hooks`, {
     method: "POST",
     headers: {
@@ -50,21 +61,19 @@ export async function POST(req: Request) {
   if (!hookRes.ok) {
     const err = await hookRes.json().catch(() => ({}));
     const message = err?.message ?? `GitHub API error ${hookRes.status}`;
-    return NextResponse.json({ error: `Webhook install failed: ${message}` }, { status: 400 });
+    // Settings saved but webhook failed — return error so user knows
+    return NextResponse.json(
+      { error: `Settings saved, but webhook install failed: ${message}. Make sure you authorized repo access.` },
+      { status: 400 }
+    );
   }
 
   const hookData = await hookRes.json();
 
-  await supabaseAdmin.from("github_connections").upsert(
-    {
-      clerk_user_id: userId,
-      repo_full_name: repoFullName,
-      webhook_id: hookData.id?.toString() ?? null,
-      auto_generate: autoGenerate ?? true,
-      auto_schedule: autoSchedule ?? false,
-    },
-    { onConflict: "clerk_user_id" }
-  );
+  // Save webhook ID
+  await supabaseAdmin.from("github_connections")
+    .update({ webhook_id: hookData.id?.toString() ?? null })
+    .eq("clerk_user_id", userId);
 
   return NextResponse.json({ success: true, webhookUrl: `${appUrl}/api/webhooks/github` });
 }

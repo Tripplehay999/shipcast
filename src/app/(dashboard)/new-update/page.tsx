@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,18 +16,11 @@ function NewUpdateInner() {
   const [rawUpdate, setRawUpdate] = useState("");
   const [loading, setLoading] = useState(false);
   const [generated, setGenerated] = useState<GenerateResponse | null>(null);
-  const [updateId, setUpdateId] = useState<string | null>(null);
+  const shouldAutoGenerate = useRef(false);
 
-  useEffect(() => {
-    const q = searchParams.get("q");
-    if (q) { setRawUpdate(q); return; }
-    // Pick up prefill from Startup Radar "Use this angle"
-    const prefill = sessionStorage.getItem("shipcast_prefill");
-    if (prefill) { setRawUpdate(prefill); sessionStorage.removeItem("shipcast_prefill"); }
-  }, [searchParams]);
-
-  const handleGenerate = async () => {
-    if (!rawUpdate.trim()) return;
+  const handleGenerate = useCallback(async (text?: string) => {
+    const update = text ?? rawUpdate;
+    if (!update.trim()) return;
     setLoading(true);
     setGenerated(null);
 
@@ -35,23 +28,39 @@ function NewUpdateInner() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawUpdate }),
+        body: JSON.stringify({ rawUpdate: update }),
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error ?? "Generation failed");
-      }
+      if (!res.ok) throw new Error(data.error ?? "Generation failed");
       setGenerated(data.content);
-      setUpdateId(data.updateId);
       toast.success("Content generated!");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Something went wrong";
-      toast.error(message);
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
-  };
+  }, [rawUpdate]);
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) { setRawUpdate(q); return; }
+
+    const prefill = sessionStorage.getItem("shipcast_prefill");
+    if (prefill) {
+      sessionStorage.removeItem("shipcast_prefill");
+      setRawUpdate(prefill);
+      shouldAutoGenerate.current = true;
+    }
+  }, [searchParams]);
+
+  // Auto-generate once rawUpdate is set from prefill
+  useEffect(() => {
+    if (shouldAutoGenerate.current && rawUpdate.trim()) {
+      shouldAutoGenerate.current = false;
+      handleGenerate(rawUpdate);
+    }
+  }, [rawUpdate, handleGenerate]);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -74,9 +83,7 @@ function NewUpdateInner() {
               rows={4}
               className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 resize-none text-base"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  handleGenerate();
-                }
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate();
               }}
             />
             <p className="text-xs text-zinc-600">
@@ -86,19 +93,13 @@ function NewUpdateInner() {
 
           <Button
             className="w-full bg-white text-black hover:bg-zinc-200 h-11"
-            onClick={handleGenerate}
+            onClick={() => handleGenerate()}
             disabled={loading || !rawUpdate.trim()}
           >
             {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating content...
-              </>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating content...</>
             ) : (
-              <>
-                <Zap className="mr-2 h-4 w-4" />
-                Generate content{rawUpdate.trim() && <span className="ml-2 text-xs text-zinc-500">⌘↵</span>}
-              </>
+              <><Zap className="mr-2 h-4 w-4" />Generate content{rawUpdate.trim() && <span className="ml-2 text-xs text-zinc-500">⌘↵</span>}</>
             )}
           </Button>
 
@@ -135,17 +136,14 @@ function NewUpdateInner() {
             <Button
               variant="outline"
               className="border-zinc-800 text-zinc-400 hover:text-white bg-transparent"
-              onClick={() => {
-                setGenerated(null);
-                setRawUpdate("");
-              }}
+              onClick={() => { setGenerated(null); setRawUpdate(""); }}
             >
               New update
             </Button>
             <Button
               variant="outline"
               className="border-zinc-800 text-zinc-400 hover:text-white bg-transparent"
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Regenerate"}
