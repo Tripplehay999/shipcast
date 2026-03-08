@@ -5,10 +5,17 @@ import { ConnectedAccountsClient } from "@/components/connected-accounts-client"
 export default async function ConnectedAccountsPage() {
   const { userId } = await auth();
 
-  const { data: accounts } = await supabaseAdmin
-    .from("connected_accounts")
-    .select("platform, platform_username, created_at")
-    .eq("clerk_user_id", userId);
+  const [{ data: accounts }, { data: githubConn }] = await Promise.all([
+    supabaseAdmin
+      .from("connected_accounts")
+      .select("platform, platform_username, created_at")
+      .eq("clerk_user_id", userId!),
+    supabaseAdmin
+      .from("github_connections")
+      .select("repo_full_name, created_at")
+      .eq("clerk_user_id", userId!)
+      .single(),
+  ]);
 
   const connected = {
     twitter: accounts?.find((a) => a.platform === "twitter") ?? null,
@@ -24,7 +31,7 @@ export default async function ConnectedAccountsPage() {
           Link your social accounts. Available on all plans — posting and scheduling require Studio.
         </p>
       </div>
-      <ConnectedAccountsClient connected={connected} />
+      <ConnectedAccountsClient connected={connected} github={githubConn ?? null} />
     </div>
   );
 }
