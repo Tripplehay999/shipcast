@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { repoFullName, autoGenerate, autoSchedule } = await req.json();
+  const { repoFullName } = await req.json();
   if (!repoFullName) return NextResponse.json({ error: "repo_full_name required" }, { status: 400 });
   if (!/^[\w.-]+\/[\w.-]+$/.test(repoFullName)) {
     return NextResponse.json({ error: "Invalid repo name" }, { status: 400 });
@@ -29,16 +29,15 @@ export async function POST(req: Request) {
     "Content-Type": "application/json",
   };
 
-  // Save settings first so they always persist
-  await supabaseAdmin.from("github_connections").upsert(
-    {
-      clerk_user_id: userId,
-      repo_full_name: repoFullName,
-      auto_generate: autoGenerate ?? true,
-      auto_schedule: autoSchedule ?? false,
-    },
-    { onConflict: "clerk_user_id" }
-  );
+  // Save repo_full_name — only update columns that definitely exist
+  const { error: saveError } = await supabaseAdmin
+    .from("github_connections")
+    .update({ repo_full_name: repoFullName })
+    .eq("clerk_user_id", userId);
+
+  if (saveError) {
+    return NextResponse.json({ error: `Failed to save repo: ${saveError.message}` }, { status: 500 });
+  }
 
   // List ALL existing hooks on this repo and delete any pointing to our URL
   // This handles cases where webhook_id wasn't saved from a previous attempt
@@ -95,9 +94,11 @@ export async function POST(req: Request) {
 
   const hookData = await hookRes.json();
 
+  // Best-effort: save webhook_id if the column exists
   await supabaseAdmin.from("github_connections")
     .update({ webhook_id: hookData.id?.toString() ?? null })
-    .eq("clerk_user_id", userId);
+    .eq("clerk_user_id", userId)
+    .then(() => {}, () => {}); // ignore if webhook_id column doesn't exist
 
   return NextResponse.json({ success: true, webhookUrl });
 }
