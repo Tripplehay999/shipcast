@@ -9,7 +9,7 @@ export async function POST() {
 
   const { data: conn } = await supabaseAdmin
     .from("github_connections")
-    .select("access_token, repo_full_name, default_branch")
+    .select("access_token, repo_full_name")
     .eq("clerk_user_id", userId)
     .single();
 
@@ -25,7 +25,7 @@ export async function POST() {
     userId,
     conn.repo_full_name,
     conn.access_token,
-    conn.default_branch ?? "main"
+    "main"
   );
 
   if (result.error) {
