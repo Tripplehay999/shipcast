@@ -1,176 +1,254 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sparkles, X, Star, CheckCircle2, Loader2 } from "lucide-react";
-import type { DBMarketingEvent } from "@/lib/github/types";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
+import { Copy, Check, Sparkles, Loader2, Twitter, Linkedin, ExternalLink } from "lucide-react";
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-  feature_release: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  bug_fix: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  performance: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  integration: "bg-violet-500/10 text-violet-400 border-violet-500/20",
-  analytics: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-  security: "bg-red-500/10 text-red-400 border-red-500/20",
-  ux_improvement: "bg-pink-500/10 text-pink-400 border-pink-500/20",
-  api_change: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  infrastructure: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-  other: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-};
+interface MarketingEvent {
+  id: string;
+  short_summary: string;
+  audience_value: string | null;
+  event_type: string | null;
+  product_area: string | null;
+  marketability_score: number;
+  status: string;
+  commit?: {
+    message: string;
+    sha: string;
+    committed_at: string;
+  } | null;
+}
+
+interface Props {
+  event: MarketingEvent;
+  onStatusChange?: (id: string, status: string) => void;
+}
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   feature_release: "Feature",
-  bug_fix: "Bug Fix",
-  performance: "Performance",
+  bug_fix: "Fix",
+  performance: "Perf",
   integration: "Integration",
   analytics: "Analytics",
   security: "Security",
   ux_improvement: "UX",
-  api_change: "API Change",
-  infrastructure: "Infrastructure",
+  api_change: "API",
+  infrastructure: "Infra",
   other: "Other",
 };
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+function ScoreBar({ score }: { score: number }) {
+  const pct = Math.round(score * 100);
+  const color = pct >= 70 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-zinc-500";
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs text-zinc-500">{pct}%</span>
+    </div>
+  );
 }
 
-interface EventCardProps {
-  event: DBMarketingEvent;
-  onStatusChange: (id: string, status: string) => void;
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <Button variant="outline" size="sm" onClick={copy} className="border-zinc-700 text-zinc-400 hover:text-white bg-transparent h-7 px-2.5">
+      {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+      <span className="ml-1.5 text-xs">{copied ? "Copied" : "Copy"}</span>
+    </Button>
+  );
 }
 
-export function EventCard({ event, onStatusChange }: EventCardProps) {
-  const router = useRouter();
-  const [promoting, setPromoting] = useState(false);
-  const [dismissing, setDismissing] = useState(false);
+export function EventCard({ event, onStatusChange }: Props) {
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState<{ tweet: string; linkedin: string } | null>(null);
+  const [queuing, setQueuing] = useState(false);
+  const [queued, setQueued] = useState(false);
+  const [dismissed, setDismissed] = useState(event.status === "dismissed");
 
-  if (event.status === "dismissed") return null;
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/integrations/github/events/${event.id}`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? "Generation failed");
+      }
+      const data = await res.json();
+      setGenerated({ tweet: data.tweet, linkedin: data.linkedin });
+      onStatusChange?.(event.id, "promoted");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to generate post");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
-  const colorClass = EVENT_TYPE_COLORS[event.event_type] ?? EVENT_TYPE_COLORS.other;
-  const typeLabel = EVENT_TYPE_LABELS[event.event_type] ?? event.event_type;
-
-  const updateStatus = async (newStatus: string) => {
-    const res = await fetch(`/api/integrations/github/events/${event.id}`, {
+  const dismiss = async () => {
+    setDismissed(true);
+    onStatusChange?.(event.id, "dismissed");
+    await fetch(`/api/integrations/github/events/${event.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify({ status: "dismissed" }),
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error((data as { error?: string }).error ?? "Update failed");
-    }
   };
 
-  const handleGenerate = async () => {
-    setPromoting(true);
+  const saveToQueue = async (content: string) => {
+    setQueuing(true);
     try {
-      await updateStatus("promoted");
-      onStatusChange(event.id, "promoted");
-      const prefill = encodeURIComponent(event.audience_value ?? event.short_summary);
-      router.push(`/new-update?prefill=${prefill}`);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to promote event");
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, scheduled_for: tomorrow.toISOString() }),
+      });
+      if (!res.ok) throw new Error("Failed to queue");
+      setQueued(true);
+      toast.success("Saved to Post Queue for tomorrow 9am");
+    } catch {
+      toast.error("Failed to save to queue");
     } finally {
-      setPromoting(false);
+      setQueuing(false);
     }
   };
 
-  const handleDismiss = async () => {
-    setDismissing(true);
-    try {
-      await updateStatus("dismissed");
-      onStatusChange(event.id, "dismissed");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to dismiss");
-    } finally {
-      setDismissing(false);
-    }
-  };
+  if (dismissed) return null;
 
-  if (event.status === "promoted") {
-    return (
-      <div className="border border-emerald-500/20 rounded-2xl bg-emerald-500/5 px-5 py-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-emerald-400">Promoted</p>
-            <p className="text-xs text-zinc-500 mt-0.5 line-clamp-1">{event.short_summary}</p>
-          </div>
-        </div>
-        <a href="/new-update" className="text-xs text-zinc-400 hover:text-white transition-colors whitespace-nowrap">
-          View in Post Queue →
-        </a>
-      </div>
-    );
-  }
+  const eventTypeLabel = EVENT_TYPE_LABELS[event.event_type ?? ""] ?? "Event";
+  const commitTime = event.commit?.committed_at
+    ? new Date(event.commit.committed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
 
   return (
-    <div className="border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/30">
-      <div className="px-5 py-4">
-        <div className="flex items-center gap-2 flex-wrap mb-2">
-          <Badge className={`${colorClass} text-[10px] border font-medium`}>{typeLabel}</Badge>
-          {event.product_area && (
-            <span className="text-[10px] text-zinc-500 bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded-full">
-              {event.product_area}
-            </span>
-          )}
-          {event.launch_worthy && (
-            <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-              <Star className="h-2.5 w-2.5" />
-              Launch worthy
-            </span>
-          )}
-          <span className="ml-auto text-[10px] text-zinc-600 shrink-0">
-            {Math.round(event.confidence * 100)}% confidence
-          </span>
+    <Card className="bg-zinc-900 border-zinc-800">
+      <CardContent className="p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-xs">
+                {eventTypeLabel}
+              </Badge>
+              {event.product_area && (
+                <Badge variant="outline" className="border-zinc-800 text-zinc-500 text-xs">
+                  {event.product_area}
+                </Badge>
+              )}
+              {commitTime && <span className="text-xs text-zinc-600">{commitTime}</span>}
+            </div>
+            <p className="text-sm text-white font-medium leading-snug">{event.short_summary}</p>
+            {event.audience_value && (
+              <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{event.audience_value}</p>
+            )}
+          </div>
+          <ScoreBar score={event.marketability_score} />
         </div>
-        <p className="text-sm font-semibold text-white leading-snug">{event.short_summary}</p>
-        {event.audience_value && (
-          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{event.audience_value}</p>
+
+        {/* Generated content */}
+        {generated ? (
+          <div className="space-y-3">
+            <Tabs defaultValue="tweet">
+              <TabsList className="bg-zinc-800 border border-zinc-700 h-8">
+                <TabsTrigger value="tweet" className="text-xs h-6 data-[state=active]:bg-zinc-700">
+                  <Twitter className="h-3 w-3 mr-1" /> Tweet
+                </TabsTrigger>
+                <TabsTrigger value="linkedin" className="text-xs h-6 data-[state=active]:bg-zinc-700">
+                  <Linkedin className="h-3 w-3 mr-1" /> LinkedIn
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="tweet" className="mt-2 space-y-2">
+                <div className="rounded-lg bg-zinc-950 border border-zinc-800 p-3">
+                  <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-600">{generated.tweet.length}/280 chars</span>
+                  <div className="flex gap-2">
+                    <CopyButton text={generated.tweet} />
+                    {!queued ? (
+                      <Button
+                        size="sm"
+                        className="bg-white text-black hover:bg-zinc-200 h-7 px-2.5 text-xs"
+                        onClick={() => saveToQueue(generated.tweet)}
+                        disabled={queuing}
+                      >
+                        {queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save to Queue"}
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
+                        <a href="/queue"><ExternalLink className="h-3 w-3 mr-1" />View Queue</a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="linkedin" className="mt-2 space-y-2">
+                <div className="rounded-lg bg-zinc-950 border border-zinc-800 p-3">
+                  <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">{generated.linkedin}</p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-600">{generated.linkedin.length} chars</span>
+                  <div className="flex gap-2">
+                    <CopyButton text={generated.linkedin} />
+                    {!queued ? (
+                      <Button
+                        size="sm"
+                        className="bg-white text-black hover:bg-zinc-200 h-7 px-2.5 text-xs"
+                        onClick={() => saveToQueue(generated.linkedin)}
+                        disabled={queuing}
+                      >
+                        {queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save to Queue"}
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
+                        <a href="/queue"><ExternalLink className="h-3 w-3 mr-1" />View Queue</a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        ) : (
+          /* Actions */
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              className="bg-white text-black hover:bg-zinc-200 h-8 text-xs"
+              onClick={generate}
+              disabled={generating}
+            >
+              {generating ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Writing post…</>
+              ) : (
+                <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Generate Post</>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-zinc-600 hover:text-zinc-400 h-8 text-xs"
+              onClick={dismiss}
+            >
+              Dismiss
+            </Button>
+          </div>
         )}
-        <div className="flex items-center gap-2 mt-2">
-          <code className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded font-mono">
-            {event.commit?.sha?.slice(0, 7) ?? "unknown"}
-          </code>
-          {event.commit?.committed_at && (
-            <span className="text-[10px] text-zinc-600">{timeAgo(event.commit.committed_at)}</span>
-          )}
-          {event.likely_audience && (
-            <span className="text-[10px] text-zinc-600">· for {event.likely_audience}</span>
-          )}
-        </div>
-      </div>
-      <div className="px-5 pb-4 flex items-center gap-3">
-        <Button
-          onClick={handleGenerate}
-          disabled={promoting || dismissing}
-          className="flex-1 bg-white text-black hover:bg-zinc-200 font-semibold h-9 text-sm"
-        >
-          {promoting ? (
-            <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Promoting…</>
-          ) : (
-            <><Sparkles className="h-3.5 w-3.5 mr-2" />Generate Content</>
-          )}
-        </Button>
-        <button
-          onClick={handleDismiss}
-          disabled={promoting || dismissing}
-          className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1"
-        >
-          {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-          <span className="text-xs">Dismiss</span>
-        </button>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
