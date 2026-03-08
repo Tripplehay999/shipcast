@@ -7,24 +7,15 @@ import type { DBMarketingEvent, DBCommit } from "@/lib/github/types";
 export default async function GitHubPage() {
   const { userId } = await auth();
 
-  const [
-    { data: conn },
-    { data: notifications },
-    { data: events },
-    { data: commits },
-    { data: repoMeta },
-  ] = await Promise.all([
-    supabaseAdmin
-      .from("github_connections")
-      .select("repo_full_name, auto_generate, auto_schedule, created_at, access_token, default_branch")
-      .eq("clerk_user_id", userId!)
-      .single(),
-    supabaseAdmin
-      .from("github_notifications")
-      .select("*")
-      .eq("clerk_user_id", userId!)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false }),
+  // Only select columns guaranteed to exist in the original github_connections table.
+  // Run each query independently so one failing table doesn't break the whole page.
+  const { data: conn } = await supabaseAdmin
+    .from("github_connections")
+    .select("repo_full_name, access_token")
+    .eq("clerk_user_id", userId!)
+    .single();
+
+  const [eventsResult, commitsResult] = await Promise.allSettled([
     supabaseAdmin
       .from("marketing_event_candidates")
       .select("*, commit:github_commits(*)")
@@ -38,29 +29,19 @@ export default async function GitHubPage() {
       .eq("clerk_user_id", userId!)
       .order("committed_at", { ascending: false })
       .limit(50),
-    supabaseAdmin
-      .from("github_repositories")
-      .select("last_synced_at")
-      .eq("clerk_user_id", userId!)
-      .order("last_synced_at", { ascending: false })
-      .limit(1)
-      .single(),
   ]);
 
-  const lastSyncedAt = repoMeta?.last_synced_at ?? null;
+  const events =
+    eventsResult.status === "fulfilled" ? (eventsResult.value.data ?? []) : [];
+  const commits =
+    commitsResult.status === "fulfilled" ? (commitsResult.value.data ?? []) : [];
 
-  // Shape connection for GitHubDashboard — strip fields not needed in client
   const dashboardConn = conn
-    ? {
-        repo_full_name: conn.repo_full_name,
-        access_token: conn.access_token,
-        default_branch: conn.default_branch ?? null,
-      }
+    ? { repo_full_name: conn.repo_full_name ?? null, access_token: conn.access_token }
     : null;
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2.5 mb-2">
           <Github className="h-5 w-5 text-white" />
@@ -72,14 +53,12 @@ export default async function GitHubPage() {
         </p>
       </div>
 
-      {/* Main dashboard */}
       <GitHubDashboard
         connection={dashboardConn}
-        initialEvents={(events ?? []) as DBMarketingEvent[]}
-        initialCommits={(commits ?? []) as DBCommit[]}
-        lastSyncedAt={lastSyncedAt}
+        initialEvents={events as DBMarketingEvent[]}
+        initialCommits={commits as DBCommit[]}
+        lastSyncedAt={null}
       />
-
     </div>
   );
 }
