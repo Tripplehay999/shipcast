@@ -1,23 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase";
-
-const IGNORE_PREFIXES = ["chore:", "ci:", "docs:", "style:", "test:", "revert:", "build:"];
-
-function shouldIgnoreCommit(message: string): boolean {
-  return IGNORE_PREFIXES.some((p) => message.toLowerCase().startsWith(p));
-}
-
-// Strip conventional commit prefix for cleaner display
-function parseCommitMessage(msg: string): string {
-  return msg.replace(/^\w+(\([^)]+\))?:\s*/i, "").trim() || msg.trim();
-}
-
-function buildSummary(commits: string[]): string {
-  if (commits.length === 1) return commits[0];
-  if (commits.length <= 3) return commits.join(", ");
-  return `${commits.slice(0, 2).join(", ")}, and ${commits.length - 2} more changes`;
-}
+import { normalizeCommit } from "@/lib/github/classify";
+import { extractMarketingSignal } from "@/lib/github/extract-signals";
 
 function verifySignature(payload: string, signature: string): boolean {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
@@ -27,7 +12,10 @@ function verifySignature(payload: string, signature: string): boolean {
   try {
     const sigBuf = Buffer.from(signature);
     const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length) { console.error("[gh-webhook] Sig length mismatch", sigBuf.length, expBuf.length); return false; }
+    if (sigBuf.length !== expBuf.length) {
+      console.error("[gh-webhook] Sig length mismatch", sigBuf.length, expBuf.length);
+      return false;
+    }
     return crypto.timingSafeEqual(sigBuf, expBuf);
   } catch (e) {
     console.error("[gh-webhook] timingSafeEqual error:", e);
@@ -35,12 +23,24 @@ function verifySignature(payload: string, signature: string): boolean {
   }
 }
 
+interface GitHubPushPayload {
+  repository: { full_name: string };
+  ref: string;
+  commits: Array<{
+    id: string;
+    message: string;
+    author: { name: string; email: string };
+    timestamp: string;
+  }>;
+}
+
 export async function POST(req: Request) {
   const rawBody = await req.text();
   const sig = req.headers.get("x-hub-signature-256") ?? "";
-  const event = req.headers.get("x-github-event");
+  const event = req.headers.get("x-github-event") ?? "unknown";
+  const deliveryId = req.headers.get("x-github-delivery") ?? null;
 
-  console.log("[gh-webhook] event:", event, "sig:", sig.slice(0, 30));
+  console.log("[gh-webhook] event:", event, "delivery:", deliveryId);
 
   if (!verifySignature(rawBody, sig)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
@@ -54,23 +54,32 @@ export async function POST(req: Request) {
 
   if (event !== "push") return NextResponse.json({ ok: true });
 
-  let payload: {
-    repository: { full_name: string };
-    commits: Array<{ message: string }>;
-    ref: string;
-  };
-  try { payload = JSON.parse(rawBody); }
-  catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-
-  const branch = payload.ref.replace("refs/heads/", "");
-  console.log("[gh-webhook] branch:", branch, "repo:", payload.repository.full_name);
-
-  if (!["main", "master"].includes(branch)) {
-    return NextResponse.json({ ok: true, skipped: `branch=${branch}` });
+  let payload: GitHubPushPayload;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const repoFullName = payload.repository.full_name;
+  const branch = payload.ref.replace("refs/heads/", "");
 
+  // Store raw payload in webhook_deliveries (non-blocking, best-effort)
+  let deliveryRowId: string | null = null;
+  supabaseAdmin
+    .from("webhook_deliveries")
+    .insert({
+      event_type: event,
+      delivery_id: deliveryId,
+      repo_full_name: repoFullName,
+      raw_payload: JSON.parse(rawBody),
+      processed: false,
+    })
+    .select("id")
+    .single()
+    .then(({ data }) => { deliveryRowId = data?.id ?? null; }, (err) => console.error("[gh-webhook] delivery insert error:", err));
+
+  // Look up the connection to get clerk_user_id
   const { data: conn } = await supabaseAdmin
     .from("github_connections")
     .select("clerk_user_id")
@@ -82,33 +91,118 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, skipped: "no connection" });
   }
 
-  const allCommits = payload.commits
+  const clerkUserId = conn.clerk_user_id;
+  let processed = 0;
+  let marketable = 0;
+  let duplicates = 0;
+
+  for (const rawCommit of payload.commits ?? []) {
+    const normalized = normalizeCommit({
+      sha: rawCommit.id,
+      message: rawCommit.message,
+      author: {
+        name: rawCommit.author.name,
+        email: rawCommit.author.email,
+      },
+      committed_at: rawCommit.timestamp,
+      repo: repoFullName,
+      branch,
+      source: "webhook",
+    });
+
+    // Upsert into github_commits
+    const { data: insertedCommit, error: insertError } = await supabaseAdmin
+      .from("github_commits")
+      .insert({
+        clerk_user_id: clerkUserId,
+        repo_full_name: repoFullName,
+        sha: normalized.sha,
+        message: normalized.message,
+        title: normalized.title,
+        body: normalized.body,
+        author_name: normalized.author_name,
+        author_email: normalized.author_email,
+        committed_at: normalized.committed_at,
+        branch: normalized.branch,
+        commit_type: normalized.commit_type,
+        is_marketable: normalized.is_marketable,
+        marketing_score: normalized.marketing_score,
+        detected_keywords: normalized.detected_keywords,
+        status: "pending",
+        source: normalized.source,
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      if (insertError.code === "23505") {
+        duplicates++;
+        continue;
+      }
+      console.error("[gh-webhook] commit insert error:", insertError.message);
+      continue;
+    }
+
+    processed++;
+
+    // For marketable commits (score >= 0.4), create marketing event candidate
+    if (normalized.marketing_score >= 0.4 && insertedCommit) {
+      const signal = extractMarketingSignal(
+        { ...normalized, id: insertedCommit.id },
+        clerkUserId
+      );
+
+      const { error: eventError } = await supabaseAdmin
+        .from("marketing_event_candidates")
+        .insert(signal);
+
+      if (eventError) {
+        console.error("[gh-webhook] event insert error:", eventError.message);
+      } else {
+        marketable++;
+      }
+    }
+  }
+
+  // Also keep legacy github_notifications for layout badge count (non-blocking)
+  const marketableCommits = (payload.commits ?? [])
     .map((c) => c.message.split("\n")[0].trim())
-    .filter((msg) => !shouldIgnoreCommit(msg));
+    .filter((msg) => {
+      const lower = msg.toLowerCase();
+      return !["chore:", "ci:", "docs:", "style:", "test:", "revert:", "build:"].some((p) =>
+        lower.startsWith(p)
+      );
+    });
 
-  const marketingCommits = allCommits.map(parseCommitMessage).filter(Boolean);
+  if (marketableCommits.length > 0) {
+    const summary =
+      marketableCommits.length === 1
+        ? marketableCommits[0]
+        : marketableCommits.length <= 3
+        ? marketableCommits.join(", ")
+        : `${marketableCommits.slice(0, 2).join(", ")}, and ${marketableCommits.length - 2} more changes`;
 
-  console.log("[gh-webhook] Commits to notify:", marketingCommits);
-
-  if (!marketingCommits.length) {
-    return NextResponse.json({ ok: true, skipped: "only ignored commits (chore/ci/docs/etc)" });
+    supabaseAdmin
+      .from("github_notifications")
+      .insert({
+        clerk_user_id: clerkUserId,
+        repo_full_name: repoFullName,
+        commit_messages: marketableCommits,
+        summary,
+        status: "pending",
+      })
+      .then(() => {}, (err) => console.error("[gh-webhook] legacy notification error:", err));
   }
 
-  const summary = buildSummary(marketingCommits);
-
-  const { error } = await supabaseAdmin.from("github_notifications").insert({
-    clerk_user_id: conn.clerk_user_id,
-    repo_full_name: repoFullName,
-    commit_messages: marketingCommits,
-    summary,
-    status: "pending",
-  });
-
-  if (error) {
-    console.error("[gh-webhook] DB insert error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Mark delivery as processed (best-effort)
+  if (deliveryRowId) {
+    supabaseAdmin
+      .from("webhook_deliveries")
+      .update({ processed: true })
+      .eq("id", deliveryRowId)
+      .then(() => {}, () => {});
   }
 
-  console.log("[gh-webhook] Notification saved for:", conn.clerk_user_id);
-  return NextResponse.json({ ok: true, commits: marketingCommits.length });
+  console.log("[gh-webhook] processed:", processed, "marketable:", marketable, "duplicates:", duplicates);
+  return NextResponse.json({ ok: true, processed, marketable, duplicates });
 }
