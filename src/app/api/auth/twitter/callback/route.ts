@@ -50,8 +50,14 @@ export async function GET(req: Request) {
   const userRes = await fetch("https://api.twitter.com/2/users/me", {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   });
+  if (!userRes.ok) {
+    return NextResponse.redirect(`${appUrl}/connected-accounts?error=user_fetch`);
+  }
   const userData = await userRes.json();
   const twitterUser = userData.data;
+  if (!twitterUser?.id) {
+    return NextResponse.redirect(`${appUrl}/connected-accounts?error=user_fetch`);
+  }
 
   await supabaseAdmin.from("connected_accounts").upsert(
     {

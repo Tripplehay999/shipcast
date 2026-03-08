@@ -20,6 +20,9 @@ export async function POST(req: Request) {
     if (!rawUpdate?.trim()) {
       return NextResponse.json({ error: "Update text is required" }, { status: 400 });
     }
+    if (rawUpdate.length > 5000) {
+      return NextResponse.json({ error: "Update text too long (max 5000 characters)" }, { status: 400 });
+    }
 
     // Fetch user profile for context
     const { data: profile } = await supabaseAdmin

@@ -22,6 +22,14 @@ export async function POST(req: Request) {
 
   const { productName, productDescription, brandVoice, examplePosts } = await req.json();
 
+  const allowedVoices = ["casual", "professional", "developer"];
+  if (brandVoice && !allowedVoices.includes(brandVoice)) {
+    return NextResponse.json({ error: "Invalid brand voice" }, { status: 400 });
+  }
+  if (examplePosts !== undefined && (!Array.isArray(examplePosts) || examplePosts.some((p: unknown) => typeof p !== "string"))) {
+    return NextResponse.json({ error: "examplePosts must be an array of strings" }, { status: 400 });
+  }
+
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .upsert(
