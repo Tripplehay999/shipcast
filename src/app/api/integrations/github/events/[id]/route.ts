@@ -119,21 +119,28 @@ Return JSON only:
   "linkedin": "the linkedin post text"
 }`;
 
-  const message = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 800,
-    messages: [{ role: "user", content: prompt }],
-  });
+  let message;
+  try {
+    message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 800,
+      messages: [{ role: "user", content: prompt }],
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Anthropic API error";
+    console.error("[events/generate] Anthropic error:", msg);
+    return NextResponse.json({ error: `AI generation failed: ${msg}` }, { status: 500 });
+  }
 
   const raw = message.content[0].type === "text" ? message.content[0].text : "";
   const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) return NextResponse.json({ error: "Generation failed" }, { status: 500 });
+  if (!match) return NextResponse.json({ error: "Generation failed: no JSON in response" }, { status: 500 });
 
   let parsed: { tweet: string; linkedin: string };
   try {
     parsed = JSON.parse(match[0]);
   } catch {
-    return NextResponse.json({ error: "Parse failed" }, { status: 500 });
+    return NextResponse.json({ error: "Generation failed: could not parse response" }, { status: 500 });
   }
 
   // Mark event as promoted

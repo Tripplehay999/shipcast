@@ -6,25 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, Check, Sparkles, Loader2, Twitter, Linkedin, ExternalLink } from "lucide-react";
-
-interface MarketingEvent {
-  id: string;
-  short_summary: string;
-  audience_value: string | null;
-  event_type: string | null;
-  product_area: string | null;
-  marketability_score: number;
-  status: string;
-  commit?: {
-    message: string;
-    sha: string;
-    committed_at: string;
-  } | null;
-}
+import { Copy, Check, Sparkles, Loader2, Twitter, Linkedin, ExternalLink, AlertCircle } from "lucide-react";
+import type { DBMarketingEvent } from "@/lib/github/types";
 
 interface Props {
-  event: MarketingEvent;
+  event: DBMarketingEvent;
   onStatusChange?: (id: string, status: string) => void;
 }
 
@@ -72,23 +58,25 @@ function CopyButton({ text }: { text: string }) {
 export function EventCard({ event, onStatusChange }: Props) {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<{ tweet: string; linkedin: string } | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
   const [queuing, setQueuing] = useState(false);
   const [queued, setQueued] = useState(false);
   const [dismissed, setDismissed] = useState(event.status === "dismissed");
 
   const generate = async () => {
     setGenerating(true);
+    setGenError(null);
     try {
       const res = await fetch(`/api/integrations/github/events/${event.id}`, { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "Generation failed");
-      }
-      const data = await res.json();
-      setGenerated({ tweet: data.tweet, linkedin: data.linkedin });
+      const data = await res.json().catch(() => ({})) as { tweet?: string; linkedin?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`);
+      if (!data.tweet) throw new Error("No content returned — check your AI settings");
+      setGenerated({ tweet: data.tweet, linkedin: data.linkedin ?? "" });
       onStatusChange?.(event.id, "promoted");
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to generate post");
+      const msg = e instanceof Error ? e.message : "Generation failed";
+      setGenError(msg);
+      toast.error(msg);
     } finally {
       setGenerating(false);
     }
@@ -131,6 +119,7 @@ export function EventCard({ event, onStatusChange }: Props) {
   const commitTime = event.commit?.committed_at
     ? new Date(event.commit.committed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
+  const score = event.confidence ?? 0;
 
   return (
     <Card className="bg-zinc-900 border-zinc-800">
@@ -154,8 +143,16 @@ export function EventCard({ event, onStatusChange }: Props) {
               <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{event.audience_value}</p>
             )}
           </div>
-          <ScoreBar score={event.marketability_score} />
+          <ScoreBar score={score} />
         </div>
+
+        {/* Error state */}
+        {genError && !generated && (
+          <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5">
+            <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-400 leading-relaxed">{genError}</p>
+          </div>
+        )}
 
         {/* Generated content */}
         {generated ? (
@@ -227,6 +224,7 @@ export function EventCard({ event, onStatusChange }: Props) {
           /* Actions */
           <div className="flex items-center gap-2 pt-1">
             <Button
+              type="button"
               size="sm"
               className="bg-white text-black hover:bg-zinc-200 h-8 text-xs"
               onClick={generate}
@@ -235,10 +233,11 @@ export function EventCard({ event, onStatusChange }: Props) {
               {generating ? (
                 <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Writing post…</>
               ) : (
-                <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Generate Post</>
+                <><Sparkles className="h-3.5 w-3.5 mr-1.5" />{genError ? "Retry" : "Generate Post"}</>
               )}
             </Button>
             <Button
+              type="button"
               size="sm"
               variant="ghost"
               className="text-zinc-600 hover:text-zinc-400 h-8 text-xs"
