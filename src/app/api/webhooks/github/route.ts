@@ -2,20 +2,21 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase";
 
-const MARKETING_PREFIXES = ["feat:", "fix:", "perf:", "launch:", "release:"];
+const IGNORE_PREFIXES = ["chore:", "ci:", "docs:", "style:", "test:", "revert:", "build:"];
 
-function isMarketingCommit(message: string): boolean {
-  return MARKETING_PREFIXES.some((p) => message.toLowerCase().startsWith(p));
+function shouldIgnoreCommit(message: string): boolean {
+  return IGNORE_PREFIXES.some((p) => message.toLowerCase().startsWith(p));
 }
 
+// Strip conventional commit prefix for cleaner display
 function parseCommitMessage(msg: string): string {
-  return msg.replace(/^(feat|fix|perf|launch|release)(\([^)]+\))?:\s*/i, "").trim();
+  return msg.replace(/^\w+(\([^)]+\))?:\s*/i, "").trim() || msg.trim();
 }
 
 function buildSummary(commits: string[]): string {
   if (commits.length === 1) return commits[0];
   if (commits.length <= 3) return commits.join(", ");
-  return `${commits.slice(0, 2).join(", ")}, and ${commits.length - 2} more improvements`;
+  return `${commits.slice(0, 2).join(", ")}, and ${commits.length - 2} more changes`;
 }
 
 function verifySignature(payload: string, signature: string): boolean {
@@ -81,16 +82,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, skipped: "no connection" });
   }
 
-  const marketingCommits = payload.commits
+  const allCommits = payload.commits
     .map((c) => c.message.split("\n")[0].trim())
-    .filter(isMarketingCommit)
-    .map(parseCommitMessage)
-    .filter(Boolean);
+    .filter((msg) => !shouldIgnoreCommit(msg));
 
-  console.log("[gh-webhook] Marketing commits:", marketingCommits);
+  const marketingCommits = allCommits.map(parseCommitMessage).filter(Boolean);
+
+  console.log("[gh-webhook] Commits to notify:", marketingCommits);
 
   if (!marketingCommits.length) {
-    return NextResponse.json({ ok: true, skipped: "no marketing commits" });
+    return NextResponse.json({ ok: true, skipped: "only ignored commits (chore/ci/docs/etc)" });
   }
 
   const summary = buildSummary(marketingCommits);
