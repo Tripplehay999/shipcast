@@ -1,17 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Copy, Check, Sparkles, Loader2, Twitter, Linkedin, ExternalLink, AlertCircle } from "lucide-react";
+import { GitCommit, Sparkles, Loader2, CheckCircle2, Copy, Check, X, AlertCircle } from "lucide-react";
+import Link from "next/link";
 import type { DBMarketingEvent } from "@/lib/github/types";
 
 interface Props {
   event: DBMarketingEvent;
   onStatusChange?: (id: string, status: string) => void;
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -27,31 +36,21 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-function ScoreBar({ score }: { score: number }) {
-  const pct = Math.round(score * 100);
-  const color = pct >= 70 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-zinc-500";
-  return (
-    <div className="flex items-center gap-1.5 shrink-0">
-      <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs text-zinc-500">{pct}%</span>
-    </div>
-  );
-}
-
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
   return (
-    <Button type="button" variant="outline" size="sm" onClick={copy} className="border-zinc-700 text-zinc-400 hover:text-white bg-transparent h-7 px-2.5">
+    <button
+      type="button"
+      onClick={async () => {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+    >
       {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-      <span className="ml-1.5 text-xs">{copied ? "Copied" : "Copy"}</span>
-    </Button>
+      {copied ? "Copied" : "Copy"}
+    </button>
   );
 }
 
@@ -59,7 +58,6 @@ export function EventCard({ event, onStatusChange }: Props) {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<{ tweet: string; linkedin: string } | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
-  const [queuing, setQueuing] = useState(false);
   const [queued, setQueued] = useState(false);
   const [dismissed, setDismissed] = useState(event.status === "dismissed");
 
@@ -92,8 +90,7 @@ export function EventCard({ event, onStatusChange }: Props) {
     }).catch(() => {});
   };
 
-  const saveToQueue = async (content: string) => {
-    setQueuing(true);
+  const saveToQueue = async () => {
     try {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -101,155 +98,137 @@ export function EventCard({ event, onStatusChange }: Props) {
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, scheduled_for: tomorrow.toISOString() }),
+        body: JSON.stringify({ content: generated?.tweet, scheduled_for: tomorrow.toISOString() }),
       });
       if (!res.ok) throw new Error("Failed to queue");
       setQueued(true);
       toast.success("Saved to Post Queue for tomorrow 9am");
     } catch {
       toast.error("Failed to save to queue");
-    } finally {
-      setQueuing(false);
     }
   };
 
   if (dismissed) return null;
 
   const eventTypeLabel = EVENT_TYPE_LABELS[event.event_type ?? ""] ?? "Event";
-  const commitTime = event.commit?.committed_at
-    ? new Date(event.commit.committed_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : null;
-  const score = event.confidence ?? 0;
+  const createdAt = event.created_at ? timeAgo(event.created_at) : null;
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
-      <CardContent className="p-5 space-y-4">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-xs">
+    <div className="border border-zinc-800 rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 bg-zinc-900/60 border-b border-zinc-800 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <GitCommit className="h-4 w-4 text-emerald-400 shrink-0" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className="border-zinc-700 text-zinc-500 text-[10px]">
                 {eventTypeLabel}
               </Badge>
               {event.product_area && (
-                <Badge variant="outline" className="border-zinc-800 text-zinc-500 text-xs">
-                  {event.product_area}
-                </Badge>
+                <span className="text-xs text-zinc-600">{event.product_area}</span>
               )}
-              {commitTime && <span className="text-xs text-zinc-600">{commitTime}</span>}
+              {createdAt && <span className="text-xs text-zinc-600">{createdAt}</span>}
             </div>
-            <p className="text-sm text-white font-medium leading-snug">{event.short_summary}</p>
-            {event.audience_value && (
-              <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">{event.audience_value}</p>
-            )}
+            <p className="text-sm font-medium text-white leading-snug mt-0.5">{event.short_summary}</p>
           </div>
-          <ScoreBar score={score} />
         </div>
+        {!queued && (
+          <button
+            type="button"
+            onClick={dismiss}
+            className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0 mt-0.5"
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
-        {/* Error state */}
-        {genError && !generated && (
+      {/* Audience value */}
+      {event.audience_value && (
+        <div className="px-5 py-3 border-b border-zinc-800/60">
+          <p className="text-xs text-zinc-500 leading-relaxed">{event.audience_value}</p>
+        </div>
+      )}
+
+      {/* Error */}
+      {genError && !generated && (
+        <div className="px-5 py-3 border-b border-zinc-800/60">
           <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5">
             <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
             <p className="text-xs text-red-400 leading-relaxed">{genError}</p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Generated content */}
-        {generated ? (
-          <div className="space-y-3">
-            <Tabs defaultValue="tweet">
-              <TabsList className="bg-zinc-800 border border-zinc-700 h-8">
-                <TabsTrigger value="tweet" className="text-xs h-6 data-[state=active]:bg-zinc-700">
-                  <Twitter className="h-3 w-3 mr-1" /> Tweet
-                </TabsTrigger>
-                <TabsTrigger value="linkedin" className="text-xs h-6 data-[state=active]:bg-zinc-700">
-                  <Linkedin className="h-3 w-3 mr-1" /> LinkedIn
-                </TabsTrigger>
-              </TabsList>
+      {/* Generated content */}
+      {generated && (
+        <div className="px-5 py-4 space-y-3 border-b border-zinc-800">
+          <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide">Generated tweet</p>
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4">
+            <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-600">{generated.tweet.length}/280 chars</span>
+            <CopyButton text={generated.tweet} />
+          </div>
+          {generated.linkedin && (
+            <>
+              <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide pt-1">LinkedIn</p>
+              <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4">
+                <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.linkedin}</p>
+              </div>
+              <div className="flex justify-end">
+                <CopyButton text={generated.linkedin} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
-              <TabsContent value="tweet" className="mt-2 space-y-2">
-                <div className="rounded-lg bg-zinc-950 border border-zinc-800 p-3">
-                  <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-600">{generated.tweet.length}/280 chars</span>
-                  <div className="flex gap-2">
-                    <CopyButton text={generated.tweet} />
-                    {!queued ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="bg-white text-black hover:bg-zinc-200 h-7 px-2.5 text-xs"
-                        onClick={() => saveToQueue(generated.tweet)}
-                        disabled={queuing}
-                      >
-                        {queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save to Queue"}
-                      </Button>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
-                        <a href="/queue"><ExternalLink className="h-3 w-3 mr-1" />View Queue</a>
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="linkedin" className="mt-2 space-y-2">
-                <div className="rounded-lg bg-zinc-950 border border-zinc-800 p-3">
-                  <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">{generated.linkedin}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-600">{generated.linkedin.length} chars</span>
-                  <div className="flex gap-2">
-                    <CopyButton text={generated.linkedin} />
-                    {!queued ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="bg-white text-black hover:bg-zinc-200 h-7 px-2.5 text-xs"
-                        onClick={() => saveToQueue(generated.linkedin)}
-                        disabled={queuing}
-                      >
-                        {queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save to Queue"}
-                      </Button>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
-                        <a href="/queue"><ExternalLink className="h-3 w-3 mr-1" />View Queue</a>
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+      {/* Footer */}
+      <div className="px-5 py-4">
+        {queued ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              <p className="text-sm text-emerald-400 font-medium">Post added to queue</p>
+            </div>
+            <Link
+              href="/schedule"
+              className="text-sm text-white underline underline-offset-2 hover:text-zinc-300 transition-colors"
+            >
+              View in Post Queue →
+            </Link>
           </div>
         ) : (
-          /* Actions */
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-3">
             <Button
               type="button"
-              size="sm"
-              className="bg-white text-black hover:bg-zinc-200 h-8 text-xs"
-              onClick={generate}
+              onClick={generated ? saveToQueue : generate}
               disabled={generating}
+              className="flex-1 bg-white text-black hover:bg-zinc-200 font-semibold h-10"
             >
               {generating ? (
-                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Writing post…</>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating…</>
+              ) : generated ? (
+                <><CheckCircle2 className="h-4 w-4 mr-2" />Save to Queue</>
               ) : (
-                <><Sparkles className="h-3.5 w-3.5 mr-1.5" />{genError ? "Retry" : "Generate Post"}</>
+                <><Sparkles className="h-4 w-4 mr-2" />{genError ? "Retry" : "Generate Post"}</>
               )}
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="text-zinc-600 hover:text-zinc-400 h-8 text-xs"
-              onClick={dismiss}
-            >
-              Dismiss
-            </Button>
+            {!generated && (
+              <button
+                type="button"
+                onClick={dismiss}
+                className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2"
+              >
+                Skip
+              </button>
+            )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
