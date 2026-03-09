@@ -44,6 +44,28 @@ export async function POST(req: Request) {
   }
 }
 
+export async function DELETE(req: Request) {
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await req.json() as { id: string };
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+    const { error } = await supabaseAdmin
+      .from("scheduled_posts")
+      .delete()
+      .eq("id", id)
+      .eq("clerk_user_id", userId)
+      .eq("status", "pending"); // only allow deleting pending posts
+
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Delete failed" }, { status: 500 });
+  }
+}
+
 export async function GET() {
   try {
     const { userId } = await auth();

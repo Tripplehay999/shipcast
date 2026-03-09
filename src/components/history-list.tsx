@@ -27,7 +27,7 @@ interface Update {
   generated_content: GeneratedContent | GeneratedContent[] | null;
 }
 
-function HistoryItem({ update }: { update: Update }) {
+function HistoryItem({ update, plan }: { update: Update; plan?: "free" | "pro" | "studio" }) {
   const [expanded, setExpanded] = useState(false);
 
   // Supabase returns 1:1 joins as arrays — normalize to single object
@@ -72,7 +72,7 @@ function HistoryItem({ update }: { update: Update }) {
               email_subject: gc.email_subject ?? "",
               email_body: gc.email_body ?? "",
               changelog_entry: gc.changelog_entry ?? "",
-            }} />
+            }} plan={plan} updateId={update.id} />
           </div>
         )}
 
@@ -86,7 +86,7 @@ function HistoryItem({ update }: { update: Update }) {
   );
 }
 
-export function HistoryList({ updates }: { updates: Update[] }) {
+export function HistoryList({ updates, plan }: { updates: Update[]; plan?: "free" | "pro" | "studio" }) {
   if (updates.length === 0) {
     return (
       <div className="text-center py-16">
@@ -104,7 +104,7 @@ export function HistoryList({ updates }: { updates: Update[] }) {
   return (
     <div className="space-y-3">
       {updates.map((update) => (
-        <HistoryItem key={update.id} update={update} />
+        <HistoryItem key={update.id} update={update} plan={plan} />
       ))}
     </div>
   );

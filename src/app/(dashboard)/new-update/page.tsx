@@ -10,7 +10,7 @@ import { GenerateResponse } from "@/lib/types";
 import { ContentTabs } from "@/components/content-tabs";
 import { Loader2, Zap } from "lucide-react";
 
-function NewUpdateInner() {
+function NewUpdateInner({ plan }: { plan?: "free" | "pro" | "studio" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [rawUpdate, setRawUpdate] = useState("");
@@ -130,7 +130,7 @@ function NewUpdateInner() {
             <p className="text-sm text-zinc-300">{rawUpdate}</p>
           </div>
 
-          <ContentTabs content={generated} />
+          <ContentTabs content={generated} plan={plan} />
 
           <div className="flex gap-3 pt-2">
             <Button
@@ -161,10 +161,15 @@ function NewUpdateInner() {
   );
 }
 
-export default function NewUpdatePage() {
+import { auth } from "@clerk/nextjs/server";
+import { getUserPlan } from "@/lib/stripe";
+
+export default async function NewUpdatePage() {
+  const { userId } = await auth();
+  const plan = await getUserPlan(userId!);
   return (
     <Suspense>
-      <NewUpdateInner />
+      <NewUpdateInner plan={plan} />
     </Suspense>
   );
 }
