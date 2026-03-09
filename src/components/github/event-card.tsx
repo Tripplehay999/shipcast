@@ -1,17 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { GitCommit, Sparkles, Loader2, CheckCircle2, Copy, Check, X, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Sparkles, X, Star, CheckCircle2, Loader2, Copy, Check, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import type { DBMarketingEvent } from "@/lib/github/types";
 
-interface Props {
-  event: DBMarketingEvent;
-  onStatusChange?: (id: string, status: string) => void;
-}
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  feature_release: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  bug_fix: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  performance: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  integration: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  analytics: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+  security: "bg-red-500/10 text-red-400 border-red-500/20",
+  ux_improvement: "bg-pink-500/10 text-pink-400 border-pink-500/20",
+  api_change: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  infrastructure: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+  other: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+};
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  feature_release: "Feature",
+  bug_fix: "Bug Fix",
+  performance: "Performance",
+  integration: "Integration",
+  analytics: "Analytics",
+  security: "Security",
+  ux_improvement: "UX",
+  api_change: "API Change",
+  infrastructure: "Infrastructure",
+  other: "Other",
+};
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -23,20 +44,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  feature_release: "Feature",
-  bug_fix: "Fix",
-  performance: "Perf",
-  integration: "Integration",
-  analytics: "Analytics",
-  security: "Security",
-  ux_improvement: "UX",
-  api_change: "API",
-  infrastructure: "Infra",
-  other: "Other",
-};
-
-function CopyButton({ text }: { text: string }) {
+function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -54,14 +62,24 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function EventCard({ event, onStatusChange }: Props) {
+interface EventCardProps {
+  event: DBMarketingEvent;
+  onStatusChange: (id: string, status: string) => void;
+}
+
+export function EventCard({ event, onStatusChange }: EventCardProps) {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<{ tweet: string; linkedin: string } | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
-  const [dismissed, setDismissed] = useState(event.status === "dismissed");
+  const [dismissing, setDismissing] = useState(false);
 
-  const generate = async () => {
+  if (event.status === "dismissed") return null;
+
+  const colorClass = EVENT_TYPE_COLORS[event.event_type] ?? EVENT_TYPE_COLORS.other;
+  const typeLabel = EVENT_TYPE_LABELS[event.event_type] ?? event.event_type;
+
+  const handleGenerate = async () => {
     setGenerating(true);
     setGenError(null);
     try {
@@ -70,9 +88,9 @@ export function EventCard({ event, onStatusChange }: Props) {
       if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`);
       if (!data.tweet) throw new Error("No content returned — check your AI settings");
       setGenerated({ tweet: data.tweet, linkedin: data.linkedin ?? "" });
-      onStatusChange?.(event.id, "promoted");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Generation failed";
+      onStatusChange(event.id, "promoted");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Generation failed";
       setGenError(msg);
       toast.error(msg);
     } finally {
@@ -80,14 +98,19 @@ export function EventCard({ event, onStatusChange }: Props) {
     }
   };
 
-  const dismiss = async () => {
-    setDismissed(true);
-    onStatusChange?.(event.id, "dismissed");
-    await fetch(`/api/integrations/github/events/${event.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "dismissed" }),
-    }).catch(() => {});
+  const handleDismiss = async () => {
+    setDismissing(true);
+    try {
+      await fetch(`/api/integrations/github/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "dismissed" }),
+      });
+      onStatusChange(event.id, "dismissed");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to dismiss");
+      setDismissing(false);
+    }
   };
 
   const saveToQueue = async () => {
@@ -108,52 +131,51 @@ export function EventCard({ event, onStatusChange }: Props) {
     }
   };
 
-  if (dismissed) return null;
-
-  const eventTypeLabel = EVENT_TYPE_LABELS[event.event_type ?? ""] ?? "Event";
-  const createdAt = event.created_at ? timeAgo(event.created_at) : null;
-
   return (
-    <div className="border border-zinc-800 rounded-2xl overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 bg-zinc-900/60 border-b border-zinc-800 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-2 min-w-0">
-          <GitCommit className="h-4 w-4 text-emerald-400 shrink-0" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className="border-zinc-700 text-zinc-500 text-[10px]">
-                {eventTypeLabel}
-              </Badge>
-              {event.product_area && (
-                <span className="text-xs text-zinc-600">{event.product_area}</span>
-              )}
-              {createdAt && <span className="text-xs text-zinc-600">{createdAt}</span>}
-            </div>
-            <p className="text-sm font-medium text-white leading-snug mt-0.5">{event.short_summary}</p>
-          </div>
+    <div className="border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/30">
+      <div className="px-5 py-4">
+        {/* Badges row */}
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <Badge className={`${colorClass} text-[10px] border font-medium`}>{typeLabel}</Badge>
+          {event.product_area && (
+            <span className="text-[10px] text-zinc-500 bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded-full">
+              {event.product_area}
+            </span>
+          )}
+          {event.launch_worthy && (
+            <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+              <Star className="h-2.5 w-2.5" />
+              Launch worthy
+            </span>
+          )}
+          <span className="ml-auto text-[10px] text-zinc-600 shrink-0">
+            {Math.round(event.confidence * 100)}% confidence
+          </span>
         </div>
-        {!queued && (
-          <button
-            type="button"
-            onClick={dismiss}
-            className="text-zinc-600 hover:text-zinc-400 transition-colors shrink-0 mt-0.5"
-            title="Dismiss"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
 
-      {/* Audience value */}
-      {event.audience_value && (
-        <div className="px-5 py-3 border-b border-zinc-800/60">
-          <p className="text-xs text-zinc-500 leading-relaxed">{event.audience_value}</p>
+        {/* Summary + audience value */}
+        <p className="text-sm font-semibold text-white leading-snug">{event.short_summary}</p>
+        {event.audience_value && (
+          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{event.audience_value}</p>
+        )}
+
+        {/* Meta row */}
+        <div className="flex items-center gap-2 mt-2">
+          <code className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded font-mono">
+            {event.commit?.sha?.slice(0, 7) ?? "unknown"}
+          </code>
+          {event.commit?.committed_at && (
+            <span className="text-[10px] text-zinc-600">{timeAgo(event.commit.committed_at)}</span>
+          )}
+          {event.likely_audience && (
+            <span className="text-[10px] text-zinc-600">· for {event.likely_audience}</span>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Error */}
       {genError && !generated && (
-        <div className="px-5 py-3 border-b border-zinc-800/60">
+        <div className="px-5 pb-3">
           <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2.5">
             <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
             <p className="text-xs text-red-400 leading-relaxed">{genError}</p>
@@ -163,70 +185,71 @@ export function EventCard({ event, onStatusChange }: Props) {
 
       {/* Generated content */}
       {generated && (
-        <div className="px-5 py-4 space-y-3 border-b border-zinc-800">
-          <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide">Generated tweet</p>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4">
-            <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-600">{generated.tweet.length}/280 chars</span>
-            <CopyButton text={generated.tweet} />
+        <div className="px-5 pb-4 space-y-3 border-t border-zinc-800">
+          <div className="pt-3 space-y-2">
+            <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">Tweet</p>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+              <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-600">{generated.tweet.length}/280 chars</span>
+              <CopyBtn text={generated.tweet} />
+            </div>
           </div>
           {generated.linkedin && (
-            <>
-              <p className="text-xs text-zinc-500 font-medium uppercase tracking-wide pt-1">LinkedIn</p>
-              <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4">
+            <div className="space-y-2">
+              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">LinkedIn</p>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
                 <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.linkedin}</p>
               </div>
               <div className="flex justify-end">
-                <CopyButton text={generated.linkedin} />
+                <CopyBtn text={generated.linkedin} />
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
 
-      {/* Footer */}
-      <div className="px-5 py-4">
+      {/* Actions */}
+      <div className="px-5 pb-4 flex items-center gap-3">
         {queued ? (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <>
+            <div className="flex items-center gap-2 flex-1">
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
               <p className="text-sm text-emerald-400 font-medium">Post added to queue</p>
             </div>
-            <Link
-              href="/schedule"
-              className="text-sm text-white underline underline-offset-2 hover:text-zinc-300 transition-colors"
-            >
+            <Link href="/schedule" className="text-xs text-zinc-400 hover:text-white transition-colors whitespace-nowrap">
               View in Post Queue →
             </Link>
-          </div>
+          </>
         ) : (
-          <div className="flex items-center gap-3">
+          <>
             <Button
               type="button"
-              onClick={generated ? saveToQueue : generate}
-              disabled={generating}
-              className="flex-1 bg-white text-black hover:bg-zinc-200 font-semibold h-10"
+              onClick={generated ? saveToQueue : handleGenerate}
+              disabled={generating || dismissing}
+              className="flex-1 bg-white text-black hover:bg-zinc-200 font-semibold h-9 text-sm"
             >
               {generating ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating…</>
+                <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Generating…</>
               ) : generated ? (
-                <><CheckCircle2 className="h-4 w-4 mr-2" />Save to Queue</>
+                <><CheckCircle2 className="h-3.5 w-3.5 mr-2" />Save to Queue</>
               ) : (
-                <><Sparkles className="h-4 w-4 mr-2" />{genError ? "Retry" : "Generate Post"}</>
+                <><Sparkles className="h-3.5 w-3.5 mr-2" />{genError ? "Retry" : "Generate Content"}</>
               )}
             </Button>
             {!generated && (
               <button
                 type="button"
-                onClick={dismiss}
-                className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2"
+                onClick={handleDismiss}
+                disabled={generating || dismissing}
+                className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1"
               >
-                Skip
+                {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                <span className="text-xs">Dismiss</span>
               </button>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

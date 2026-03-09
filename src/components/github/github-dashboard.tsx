@@ -349,7 +349,7 @@ function GitHubDashboardInner({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="needs_review" className="mt-4 space-y-3">
+        <TabsContent value="needs_review" className="mt-4">
           {visibleEvents.length === 0 ? (
             <div className="flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/40 px-5 py-6">
               <CheckCircle2 className="h-5 w-5 text-zinc-600 shrink-0" />
@@ -369,9 +369,11 @@ function GitHubDashboardInner({
               </div>
             </div>
           ) : (
-            visibleEvents.map((event) => (
-              <EventCard key={event.id} event={event} onStatusChange={handleStatusChange} />
-            ))
+            <div className="space-y-3">
+              {visibleEvents.map((event) => (
+                <EventCard key={event.id} event={event} onStatusChange={handleStatusChange} />
+              ))}
+            </div>
           )}
         </TabsContent>
 
