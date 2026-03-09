@@ -26,8 +26,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const [{ data: sub }, { count: pendingNotifs }] = await Promise.all([
     supabaseAdmin.from("subscriptions").select("plan").eq("clerk_user_id", userId!).single(),
-    supabaseAdmin.from("github_notifications").select("id", { count: "exact", head: true })
-      .eq("clerk_user_id", userId!).eq("status", "pending"),
+    supabaseAdmin.from("marketing_event_candidates").select("id", { count: "exact", head: true })
+      .eq("clerk_user_id", userId!).eq("status", "needs_review"),
   ]);
 
   const plan = sub?.plan ?? "free";

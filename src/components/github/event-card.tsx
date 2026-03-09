@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Sparkles, X, Star, CheckCircle2, Loader2, Copy, Check, AlertCircle } from "lucide-react";
+import { Sparkles, X, Star, CheckCircle2, Loader2, Copy, Check, AlertCircle, FileText } from "lucide-react";
 import Link from "next/link";
 import type { DBMarketingEvent } from "@/lib/github/types";
 
@@ -62,16 +62,22 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
+interface GeneratedContent {
+  tweet?: string | null;
+  linkedin?: string | null;
+  blog?: string | null;
+  scheduledAt?: string;
+}
+
 interface EventCardProps {
   event: DBMarketingEvent;
   onStatusChange: (id: string, status: string) => void;
 }
 
 export function EventCard({ event, onStatusChange }: EventCardProps) {
-  const [generating, setGenerating] = useState(false);
-  const [generated, setGenerated] = useState<{ tweet: string; linkedin: string } | null>(null);
+  const [generating, setGenerating] = useState<"quick" | "blog" | null>(null);
+  const [generated, setGenerated] = useState<GeneratedContent | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
-  const [queued, setQueued] = useState(false);
   const [dismissing, setDismissing] = useState(false);
 
   if (event.status === "dismissed") return null;
@@ -79,22 +85,26 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
   const colorClass = EVENT_TYPE_COLORS[event.event_type] ?? EVENT_TYPE_COLORS.other;
   const typeLabel = EVENT_TYPE_LABELS[event.event_type] ?? event.event_type;
 
-  const handleGenerate = async () => {
-    setGenerating(true);
+  const handleGenerate = async (postType: "quick" | "blog") => {
+    setGenerating(postType);
     setGenError(null);
     try {
-      const res = await fetch(`/api/integrations/github/events/${event.id}`, { method: "POST" });
-      const data = await res.json().catch(() => ({})) as { tweet?: string; linkedin?: string; error?: string };
+      const res = await fetch(`/api/integrations/github/events/${event.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postType }),
+      });
+      const data = await res.json().catch(() => ({})) as GeneratedContent & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `Server error (${res.status})`);
-      if (!data.tweet) throw new Error("No content returned — check your AI settings");
-      setGenerated({ tweet: data.tweet, linkedin: data.linkedin ?? "" });
+      if (!data.tweet && !data.blog) throw new Error("No content returned — check your AI settings");
+      setGenerated(data);
       onStatusChange(event.id, "promoted");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Generation failed";
       setGenError(msg);
       toast.error(msg);
     } finally {
-      setGenerating(false);
+      setGenerating(null);
     }
   };
 
@@ -113,23 +123,9 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
     }
   };
 
-  const saveToQueue = async () => {
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(9, 0, 0, 0);
-      const res = await fetch("/api/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: generated?.tweet, scheduled_for: tomorrow.toISOString() }),
-      });
-      if (!res.ok) throw new Error("Failed to queue");
-      setQueued(true);
-      toast.success("Saved to Post Queue for tomorrow 9am");
-    } catch {
-      toast.error("Failed to save to queue");
-    }
-  };
+  const scheduledDate = generated?.scheduledAt
+    ? new Date(generated.scheduledAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : null;
 
   return (
     <div className="border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/30">
@@ -153,13 +149,11 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
           </span>
         </div>
 
-        {/* Summary + audience value */}
         <p className="text-sm font-semibold text-white leading-snug">{event.short_summary}</p>
         {event.audience_value && (
           <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{event.audience_value}</p>
         )}
 
-        {/* Meta row */}
         <div className="flex items-center gap-2 mt-2">
           <code className="text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded font-mono">
             {event.commit?.sha?.slice(0, 7) ?? "unknown"}
@@ -183,20 +177,22 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
         </div>
       )}
 
-      {/* Generated content */}
+      {/* Generated content preview */}
       {generated && (
-        <div className="px-5 pb-4 space-y-3 border-t border-zinc-800">
-          <div className="pt-3 space-y-2">
-            <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">Tweet</p>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
-              <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
+        <div className="px-5 pb-1 space-y-3 border-t border-zinc-800">
+          {generated.tweet && (
+            <div className="pt-3 space-y-2">
+              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">Tweet</p>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+                <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.tweet}</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-zinc-600">{generated.tweet.length}/280 chars</span>
+                <CopyBtn text={generated.tweet} />
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-zinc-600">{generated.tweet.length}/280 chars</span>
-              <CopyBtn text={generated.tweet} />
-            </div>
-          </div>
-          {generated.linkedin && (
+          )}
+          {generated.linkedin && !generated.blog && (
             <div className="space-y-2">
               <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">LinkedIn</p>
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
@@ -207,49 +203,76 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
               </div>
             </div>
           )}
+          {generated.blog && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">Blog Post</p>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-48 overflow-y-auto">
+                <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.blog}</p>
+              </div>
+              <div className="flex justify-end">
+                <CopyBtn text={generated.blog} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Actions */}
-      <div className="px-5 pb-4 flex items-center gap-3">
-        {queued ? (
-          <>
-            <div className="flex items-center gap-2 flex-1">
-              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              <p className="text-sm text-emerald-400 font-medium">Post added to queue</p>
+      <div className="px-5 py-4">
+        {generated ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <p className="text-sm text-emerald-400 font-medium">Added to Post Queue</p>
+              </div>
+              <Link href="/schedule" className="text-xs text-zinc-400 hover:text-white transition-colors whitespace-nowrap">
+                View Post Queue →
+              </Link>
             </div>
-            <Link href="/schedule" className="text-xs text-zinc-400 hover:text-white transition-colors whitespace-nowrap">
-              View in Post Queue →
-            </Link>
-          </>
+            {scheduledDate && (
+              <p className="text-[11px] text-zinc-600">
+                Scheduled for {scheduledDate} at 9am — available for instant posting in your queue.
+              </p>
+            )}
+          </div>
         ) : (
-          <>
+          <div className="flex items-center gap-2">
             <Button
               type="button"
-              onClick={generated ? saveToQueue : handleGenerate}
-              disabled={generating || dismissing}
+              onClick={() => handleGenerate("quick")}
+              disabled={!!generating || dismissing}
               className="flex-1 bg-white text-black hover:bg-zinc-200 font-semibold h-9 text-sm"
             >
-              {generating ? (
+              {generating === "quick" ? (
                 <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Generating…</>
-              ) : generated ? (
-                <><CheckCircle2 className="h-3.5 w-3.5 mr-2" />Save to Queue</>
               ) : (
-                <><Sparkles className="h-3.5 w-3.5 mr-2" />{genError ? "Retry" : "Generate Content"}</>
+                <><Sparkles className="h-3.5 w-3.5 mr-2" />Quick Update</>
               )}
             </Button>
-            {!generated && (
-              <button
-                type="button"
-                onClick={handleDismiss}
-                disabled={generating || dismissing}
-                className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1"
-              >
-                {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                <span className="text-xs">Dismiss</span>
-              </button>
-            )}
-          </>
+            <Button
+              type="button"
+              onClick={() => handleGenerate("blog")}
+              disabled={!!generating || dismissing}
+              variant="outline"
+              className="flex-1 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 h-9 text-sm"
+            >
+              {generating === "blog" ? (
+                <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Writing…</>
+              ) : (
+                <><FileText className="h-3.5 w-3.5 mr-2" />Blog Post</>
+              )}
+            </Button>
+            <button
+              type="button"
+              onClick={handleDismiss}
+              disabled={!!generating || dismissing}
+              className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1"
+            >
+              {dismissing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+              <span className="text-xs">Dismiss</span>
+            </button>
+          </div>
         )}
       </div>
     </div>

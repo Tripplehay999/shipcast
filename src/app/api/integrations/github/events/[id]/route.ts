@@ -41,15 +41,16 @@ export async function PATCH(
   return NextResponse.json({ event: data });
 }
 
-// POST — generate ready-to-post content from this event
+// POST — generate content and auto-queue it
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const { postType = "quick" } = await req.json().catch(() => ({})) as { postType?: "quick" | "blog" };
 
   // Get the event + joined commit
   const { data: event } = await supabaseAdmin
@@ -69,6 +70,7 @@ export async function POST(
     .single();
 
   const productName = profile?.product_name ?? "our product";
+  const productDesc = profile?.product_description ?? "";
   const brandVoice = profile?.brand_voice ?? "casual";
   const examplePosts = (profile?.example_posts ?? []) as string[];
 
@@ -84,34 +86,48 @@ export async function POST(
   };
 
   const examplesBlock = examplePosts.length > 0
-    ? `\n\nHere are example posts from this founder to match their voice:\n${examplePosts.slice(0, 3).map((p, i) => `${i + 1}. ${p}`).join("\n")}`
+    ? `\n\nExample posts from this founder:\n${examplePosts.slice(0, 3).map((p, i) => `${i + 1}. ${p}`).join("\n")}`
     : "";
 
-  const prompt = `You are a world-class startup marketing copywriter. Your job is to write a tweet announcement that sounds like it came directly from the founder — not from a marketing team.
-
-Product: ${productName}
-${profile?.product_description ? `What it does: ${profile.product_description}` : ""}
+  const context = `Product: ${productName}
+${productDesc ? `What it does: ${productDesc}` : ""}
 Brand voice: ${voiceGuide[brandVoice] ?? voiceGuide.casual}${examplesBlock}
 
-A developer just shipped this commit:
-"${commitMsg}"
+Commit shipped: "${commitMsg}"
+What changed: ${event.short_summary}
+User benefit: ${audienceValue}
+${productArea ? `Product area: ${productArea}` : ""}
+Type: ${eventType.replace(/_/g, " ")}`;
 
-Context:
-- What changed: ${event.short_summary}
-- User benefit: ${audienceValue}
-${productArea ? `- Product area: ${productArea}` : ""}
-- Type: ${eventType.replace(/_/g, " ")}
+  const prompt = postType === "blog"
+    ? `You are a world-class startup content writer. Write a founder blog post about this shipped feature — the kind of in-depth update you'd publish on a company blog or Substack.
 
-Write the tweet announcement. Rules:
-- Under 280 characters (strictly)
-- Sound like Anthropic, Vercel, or Linear would announce it — founder voice, not corporate speak
-- Lead with what changed / what's now possible, not "excited to announce"
-- Include 1–3 relevant hashtags at the end
-- Do NOT use emojis unless the brand voice is casual
-- No filler phrases like "game-changer" or "revolutionize"
-- Make it feel real and specific — not generic
+${context}
 
-Also write a short LinkedIn version (2–3 sentences, more context, professional tone).
+Rules:
+- 350–550 words
+- Founder voice — personal, direct, explains the "why" behind the decision, not just "what"
+- Structure: hook (1 sentence) → what we shipped → why we built it → how it works (briefly) → what it means for users → closing CTA
+- No bullet-point lists — flowing prose
+- No emojis
+- No corporate speak ("exciting", "thrilled", "game-changer")
+- End with a clear CTA (try it, share it, reply with feedback)
+
+Also write a LinkedIn version (3–4 sentences, professional but personal) and a tweet (under 280 chars, 1–2 hashtags).
+
+Return JSON only:
+{
+  "blog": "the full blog post text",
+  "linkedin": "the linkedin post",
+  "tweet": "the tweet"
+}`
+    : `You are a world-class startup marketing copywriter. Write a tweet announcement that sounds like it came directly from the founder.
+
+${context}
+
+Rules:
+- Tweet: under 280 characters (strictly), founder voice, lead with what changed, 1–3 hashtags, no emojis unless voice is casual, no filler phrases
+- LinkedIn: 2–3 sentences, more context, professional tone
 
 Return JSON only:
 {
@@ -123,7 +139,7 @@ Return JSON only:
   try {
     message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 800,
+      max_tokens: postType === "blog" ? 1200 : 800,
       messages: [{ role: "user", content: prompt }],
     });
   } catch (e: unknown) {
@@ -136,11 +152,34 @@ Return JSON only:
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return NextResponse.json({ error: "Generation failed: no JSON in response" }, { status: 500 });
 
-  let parsed: { tweet: string; linkedin: string };
+  let parsed: { tweet?: string; linkedin?: string; blog?: string };
   try {
     parsed = JSON.parse(match[0]);
   } catch {
     return NextResponse.json({ error: "Generation failed: could not parse response" }, { status: 500 });
+  }
+
+  // Auto-queue to Post Queue (tomorrow 9am)
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(9, 0, 0, 0);
+  const scheduledAt = tomorrow.toISOString();
+
+  const postsToQueue: { platform: string; content: string }[] = [];
+  if (parsed.tweet) postsToQueue.push({ platform: "twitter", content: parsed.tweet });
+  if (parsed.linkedin) postsToQueue.push({ platform: "linkedin", content: parsed.linkedin });
+  if (parsed.blog) postsToQueue.push({ platform: "linkedin", content: parsed.blog });
+
+  if (postsToQueue.length > 0) {
+    await supabaseAdmin.from("scheduled_posts").insert(
+      postsToQueue.map((p) => ({
+        clerk_user_id: userId,
+        platform: p.platform,
+        content: p.content,
+        scheduled_at: scheduledAt,
+        status: "pending",
+      }))
+    );
   }
 
   // Mark event as promoted
@@ -150,5 +189,11 @@ Return JSON only:
     .eq("id", id)
     .eq("clerk_user_id", userId);
 
-  return NextResponse.json({ tweet: parsed.tweet, linkedin: parsed.linkedin });
+  return NextResponse.json({
+    tweet: parsed.tweet ?? null,
+    linkedin: parsed.linkedin ?? null,
+    blog: parsed.blog ?? null,
+    queued: true,
+    scheduledAt,
+  });
 }
