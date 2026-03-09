@@ -31,7 +31,7 @@ function ScoreBar({ score }: { score: number }) {
   const pct = Math.round(score * 100);
   const color = pct >= 70 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-zinc-500";
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 shrink-0">
       <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
@@ -48,7 +48,7 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <Button variant="outline" size="sm" onClick={copy} className="border-zinc-700 text-zinc-400 hover:text-white bg-transparent h-7 px-2.5">
+    <Button type="button" variant="outline" size="sm" onClick={copy} className="border-zinc-700 text-zinc-400 hover:text-white bg-transparent h-7 px-2.5">
       {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
       <span className="ml-1.5 text-xs">{copied ? "Copied" : "Copy"}</span>
     </Button>
@@ -89,7 +89,7 @@ export function EventCard({ event, onStatusChange }: Props) {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "dismissed" }),
-    });
+    }).catch(() => {});
   };
 
   const saveToQueue = async (content: string) => {
@@ -177,6 +177,7 @@ export function EventCard({ event, onStatusChange }: Props) {
                     <CopyButton text={generated.tweet} />
                     {!queued ? (
                       <Button
+                        type="button"
                         size="sm"
                         className="bg-white text-black hover:bg-zinc-200 h-7 px-2.5 text-xs"
                         onClick={() => saveToQueue(generated.tweet)}
@@ -185,7 +186,7 @@ export function EventCard({ event, onStatusChange }: Props) {
                         {queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save to Queue"}
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
+                      <Button type="button" size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
                         <a href="/queue"><ExternalLink className="h-3 w-3 mr-1" />View Queue</a>
                       </Button>
                     )}
@@ -203,6 +204,7 @@ export function EventCard({ event, onStatusChange }: Props) {
                     <CopyButton text={generated.linkedin} />
                     {!queued ? (
                       <Button
+                        type="button"
                         size="sm"
                         className="bg-white text-black hover:bg-zinc-200 h-7 px-2.5 text-xs"
                         onClick={() => saveToQueue(generated.linkedin)}
@@ -211,7 +213,7 @@ export function EventCard({ event, onStatusChange }: Props) {
                         {queuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save to Queue"}
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
+                      <Button type="button" size="sm" variant="outline" className="border-zinc-700 text-zinc-400 h-7 px-2.5 text-xs bg-transparent" asChild>
                         <a href="/queue"><ExternalLink className="h-3 w-3 mr-1" />View Queue</a>
                       </Button>
                     )}
