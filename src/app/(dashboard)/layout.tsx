@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { UserButton, SignOutButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
-import { LayoutDashboard, PlusCircle, History, Settings, Zap, Link2, CalendarClock, CreditCard, Rocket, LogOut, Github, Radio, MessageSquare, GitMerge } from "lucide-react";
+import { LayoutDashboard, PlusCircle, History, Settings, Zap, Link2, CalendarClock, CreditCard, Rocket, LogOut, Radio, MessageSquare, GitMerge } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AnnouncementBar } from "@/components/dashboard/announcement-bar";
 
@@ -27,16 +27,13 @@ const planBadge: Record<string, string> = { free: "Free", pro: "Pro", studio: "S
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { userId } = await auth();
 
-  const [{ data: sub }, { count: pendingNotifs }, { count: pendingAutomation }] = await Promise.all([
+  const [{ data: sub }, { count: pendingAutomation }] = await Promise.all([
     supabaseAdmin.from("subscriptions").select("plan").eq("clerk_user_id", userId!).single(),
-    supabaseAdmin.from("marketing_event_candidates").select("id", { count: "exact", head: true })
-      .eq("clerk_user_id", userId!).eq("status", "needs_review"),
     supabaseAdmin.from("commit_groups").select("id", { count: "exact", head: true })
       .eq("clerk_user_id", userId!).eq("status", "pending"),
   ]);
 
   const plan = sub?.plan ?? "free";
-  const notifCount = pendingNotifs ?? 0;
   const automationCount = pendingAutomation ?? 0;
 
   return (
@@ -70,20 +67,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             );
           })}
 
-          {/* GitHub — with pending notification badge */}
-          <Link
-            href="/github"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
-          >
-            <Github className="h-4 w-4 shrink-0" />
-            GitHub
-            {notifCount > 0 && (
-              <span className="ml-auto flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">
-                {notifCount > 9 ? "9+" : notifCount}
-              </span>
-            )}
-          </Link>
-        </nav>
+          </nav>
 
         <div className="space-y-1 mb-3">
           {bottomItems.map(({ href, label, icon: Icon }) => (

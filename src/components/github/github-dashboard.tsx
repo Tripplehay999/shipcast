@@ -305,9 +305,8 @@ function GitHubDashboardInner({
           <Button
             onClick={handleSync}
             disabled={syncing}
-            variant="outline"
             size="sm"
-            className="border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 h-8 text-xs"
+            className="bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700 h-8 text-xs"
           >
             {syncing ? (
               <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Syncing…</>

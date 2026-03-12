@@ -140,7 +140,7 @@ function ImproveButton({ platform, value, onImproved }: { platform: string; valu
 
 const FORMAT_LABELS: Record<string, string> = {
   tweet: "Tweet", thread: "Thread", linkedin: "LinkedIn", reddit: "Reddit",
-  indie_hackers: "Indie Hackers", blog_draft: "Blog post",
+  indie_hackers: "Indie Hackers", blog_draft: "Detailed Update",
   email_body: "Email", changelog_entry: "Changelog",
 };
 

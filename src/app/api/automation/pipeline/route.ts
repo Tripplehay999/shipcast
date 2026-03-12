@@ -266,7 +266,7 @@ async function runCommitGroupPipeline({
     .from("updates")
     .insert({
       clerk_user_id: clerkUserId,
-      raw_update: `[Auto] ${announcementObj.headline}`,
+      raw_update: announcementObj.headline,
     })
     .select()
     .single();

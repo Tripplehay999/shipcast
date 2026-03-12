@@ -159,6 +159,26 @@ Return JSON only:
     return NextResponse.json({ error: "Generation failed: could not parse response" }, { status: 500 });
   }
 
+  // Save to updates + generated_content so it appears in History
+  const rawUpdate = event.commit?.title || event.short_summary || commitMsg;
+  const { data: update } = await supabaseAdmin
+    .from("updates")
+    .insert({ clerk_user_id: userId, raw_update: rawUpdate })
+    .select()
+    .single();
+
+  if (update) {
+    await supabaseAdmin.from("generated_content").insert({
+      update_id: update.id,
+      tweet: parsed.tweet ?? "",
+      thread: [],
+      linkedin: parsed.linkedin ?? "",
+      reddit: "",
+      indie_hackers: "",
+      blog_draft: parsed.blog ?? null,
+    });
+  }
+
   // Auto-queue to Post Queue (tomorrow 9am)
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);

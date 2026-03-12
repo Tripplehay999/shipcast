@@ -205,7 +205,7 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
           )}
           {generated.blog && (
             <div className="space-y-2">
-              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">Blog Post</p>
+              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">Detailed Update</p>
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-48 overflow-y-auto">
                 <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{generated.blog}</p>
               </div>
@@ -254,13 +254,12 @@ export function EventCard({ event, onStatusChange }: EventCardProps) {
               type="button"
               onClick={() => handleGenerate("blog")}
               disabled={!!generating || dismissing}
-              variant="outline"
-              className="flex-1 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 h-9 text-sm"
+              className="flex-1 bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700 h-9 text-sm"
             >
               {generating === "blog" ? (
                 <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />Writing…</>
               ) : (
-                <><FileText className="h-3.5 w-3.5 mr-2" />Blog Post</>
+                <><FileText className="h-3.5 w-3.5 mr-2" />Detailed Update</>
               )}
             </Button>
             <button
