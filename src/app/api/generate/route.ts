@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { buildGenerationPrompt } from "@/lib/prompts";
 import { GenerateResponse } from "@/lib/types";
 import { extractJson } from "@/lib/parse-json";
+import { logAIUsage } from "@/lib/ai-logger";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -40,10 +41,23 @@ export async function POST(req: Request) {
     });
 
     // Call Claude
+    const t0 = Date.now();
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 3500,
       messages: [{ role: "user", content: prompt }],
+    });
+    const durationMs = Date.now() - t0;
+
+    // Log usage (non-blocking)
+    logAIUsage({
+      clerkUserId: userId,
+      endpoint: "generate",
+      model: "claude-sonnet-4-6",
+      promptTokens: message.usage.input_tokens,
+      completionTokens: message.usage.output_tokens,
+      durationMs,
+      success: true,
     });
 
     const responseText = message.content[0].type === "text" ? message.content[0].text : "";

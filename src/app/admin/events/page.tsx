@@ -133,7 +133,8 @@ export default async function AdminEventsPage({
             )}
             {(events ?? []).map((event) => {
               const scorePercent = Math.round((event.confidence ?? 0) * 100);
-              const commit = event.commit as {
+              const commitRaw = Array.isArray(event.commit) ? event.commit[0] : event.commit;
+              const commit = commitRaw as {
                 sha: string;
                 title: string;
                 commit_type: string;
