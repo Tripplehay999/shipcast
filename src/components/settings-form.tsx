@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { BrandVoice } from "@/lib/types";
-import { Package, Mic2, FileText, Plus, Trash2, Save, Check } from "lucide-react";
+import { Package, Mic2, FileText, Plus, Trash2, Save, Check, Link2 } from "lucide-react";
 
 const voiceOptions: { value: BrandVoice; label: string; desc: string; emoji: string }[] = [
   { value: "casual",       label: "Casual Founder",    emoji: "👋", desc: "Authentic, personal, conversational. Like texting a friend." },
@@ -20,6 +20,7 @@ interface Profile {
   product_description: string;
   brand_voice: BrandVoice;
   example_posts: string[];
+  product_link?: string | null;
 }
 
 export function SettingsForm({ profile }: { profile: Profile | null }) {
@@ -27,6 +28,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
   const [saved, setSaved] = useState(false);
   const [productName, setProductName] = useState(profile?.product_name ?? "");
   const [productDescription, setProductDescription] = useState(profile?.product_description ?? "");
+  const [productLink, setProductLink] = useState(profile?.product_link ?? "");
   const [brandVoice, setBrandVoice] = useState<BrandVoice>(profile?.brand_voice ?? "casual");
   const [examplePosts, setExamplePosts] = useState<string[]>(
     profile?.example_posts?.length ? profile.example_posts : [""]
@@ -50,6 +52,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           productDescription,
           brandVoice,
           examplePosts: examplePosts.filter((p) => p.trim()),
+          productLink: productLink.trim() || null,
         }),
       });
       if (!res.ok) throw new Error("Save failed");
@@ -95,6 +98,20 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
               className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 resize-none focus:border-zinc-600"
             />
             <p className="text-xs text-zinc-700">{productDescription.length} chars — be specific, this feeds the AI.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-zinc-500 uppercase tracking-widest font-semibold flex items-center gap-1.5">
+              <Link2 className="h-3 w-3" /> Product URL
+              <span className="text-zinc-700 font-normal normal-case tracking-normal">(for UTM tracking)</span>
+            </Label>
+            <Input
+              value={productLink}
+              onChange={(e) => setProductLink(e.target.value)}
+              placeholder="https://yourproduct.com"
+              type="url"
+              className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-zinc-600 h-10"
+            />
+            <p className="text-xs text-zinc-700">Shipcast auto-appends UTM params to this URL in every generated post.</p>
           </div>
         </div>
       </div>

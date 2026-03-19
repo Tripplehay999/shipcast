@@ -1,26 +1,26 @@
 import Link from "next/link";
 import { UserButton, SignOutButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
-import { LayoutDashboard, PlusCircle, History, Settings, Zap, Link2, CalendarClock, CreditCard, Rocket, LogOut, Radio, MessageSquare, GitMerge } from "lucide-react";
+import {
+  LayoutDashboard,
+  Sparkles,
+  History,
+  Settings,
+  Zap,
+  Link2,
+  CalendarClock,
+  CreditCard,
+  Rocket,
+  LogOut,
+  Radio,
+  MessageSquare,
+  GitMerge,
+  Palette,
+  BarChart2,
+  Lightbulb,
+} from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AnnouncementBar } from "@/components/dashboard/announcement-bar";
-
-const navItems = [
-  { href: "/dashboard",          label: "Dashboard",     icon: LayoutDashboard },
-  { href: "/new-update",         label: "New Update",    icon: PlusCircle },
-  { href: "/automation",         label: "Automation",    icon: GitMerge },
-  { href: "/launch-kit",         label: "Launch Kit",    icon: Rocket },
-  { href: "/history",            label: "History",       icon: History },
-  { href: "/connected-accounts", label: "Accounts",      icon: Link2 },
-  { href: "/schedule",           label: "Post Queue",    icon: CalendarClock },
-  { href: "/radar",              label: "Startup Radar", icon: Radio },
-];
-
-const bottomItems = [
-  { href: "/pricing",  label: "Upgrade Plan", icon: CreditCard },
-  { href: "/support",  label: "Support",      icon: MessageSquare },
-  { href: "/settings", label: "Settings",     icon: Settings },
-];
 
 const planBadge: Record<string, string> = { free: "Free", pro: "Pro", studio: "Studio" };
 
@@ -29,8 +29,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const [{ data: sub }, { count: pendingAutomation }] = await Promise.all([
     supabaseAdmin.from("subscriptions").select("plan").eq("clerk_user_id", userId!).single(),
-    supabaseAdmin.from("commit_groups").select("id", { count: "exact", head: true })
-      .eq("clerk_user_id", userId!).eq("status", "pending"),
+    supabaseAdmin
+      .from("commit_groups")
+      .select("id", { count: "exact", head: true })
+      .eq("clerk_user_id", userId!)
+      .eq("status", "pending"),
   ]);
 
   const plan = sub?.plan ?? "free";
@@ -38,8 +41,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex">
-      <aside className="w-60 border-r border-zinc-900 flex flex-col py-6 px-4 fixed h-full">
-        <div className="flex items-center gap-2 px-2 mb-8">
+      <aside className="w-60 border-r border-zinc-900 flex flex-col py-6 px-4 fixed h-full overflow-y-auto">
+        {/* Logo */}
+        <div className="flex items-center gap-2 px-2 mb-6">
           <Zap className="h-5 w-5 text-white" />
           <span className="font-bold text-lg tracking-tight">Shipcast</span>
           <span className="ml-auto text-xs font-mono text-zinc-600 bg-zinc-900 px-2 py-0.5 rounded-full capitalize">
@@ -47,32 +51,86 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </span>
         </div>
 
-        <nav className="flex-1 space-y-1">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const badge = href === "/automation" ? automationCount : 0;
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-                {badge > 0 && (
-                  <span className="ml-auto flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">
-                    {badge > 9 ? "9+" : badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-
-          </nav>
-
-        <div className="space-y-1 mb-3">
-          {bottomItems.map(({ href, label, icon: Icon }) => (
+        <nav className="flex-1">
+          {/* Marketing section */}
+          <p className="text-[10px] font-semibold text-zinc-700 uppercase tracking-widest px-3 mb-1 mt-0">
+            Marketing
+          </p>
+          {[
+            { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+            { href: "/strategy", label: "Strategy", icon: Lightbulb },
+            { href: "/settings", label: "Brand Profile", icon: Palette },
+          ].map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
+              href={href}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
+            </Link>
+          ))}
+
+          {/* Content section */}
+          <p className="text-[10px] font-semibold text-zinc-700 uppercase tracking-widest px-3 mb-1 mt-4">
+            Content
+          </p>
+          {[
+            { href: "/new-update", label: "Create Content", icon: Sparkles, badge: 0 },
+            { href: "/launch-kit", label: "Campaigns", icon: Rocket, badge: 0 },
+            { href: "/history", label: "History", icon: History, badge: 0 },
+          ].map(({ href, label, icon: Icon, badge }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
+              {badge > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">
+                  {badge > 9 ? "9+" : badge}
+                </span>
+              )}
+            </Link>
+          ))}
+
+          {/* Growth section */}
+          <p className="text-[10px] font-semibold text-zinc-700 uppercase tracking-widest px-3 mb-1 mt-4">
+            Growth
+          </p>
+          {[
+            { href: "/automation", label: "Automation", icon: GitMerge, badge: automationCount },
+            { href: "/schedule", label: "Post Queue", icon: CalendarClock, badge: 0 },
+            { href: "/analytics", label: "Analytics", icon: BarChart2, badge: 0 },
+            { href: "/radar", label: "Startup Radar", icon: Radio, badge: 0 },
+          ].map(({ href, label, icon: Icon, badge }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
+              {badge > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-white text-black text-[10px] font-bold">
+                  {badge > 9 ? "9+" : badge}
+                </span>
+              )}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Bottom items */}
+        <div className="space-y-1 mb-3 border-t border-zinc-900 pt-4 mt-4">
+          {[
+            { href: "/connected-accounts", label: "Connected Accounts", icon: Link2 },
+            { href: "/pricing", label: "Upgrade Plan", icon: CreditCard },
+            { href: "/support", label: "Support", icon: MessageSquare },
+            { href: "/settings", label: "Settings", icon: Settings },
+          ].map(({ href, label, icon: Icon }) => (
+            <Link
+              key={`${href}-${label}`}
               href={href}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-600 hover:text-white hover:bg-zinc-900 transition-colors"
             >

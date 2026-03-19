@@ -6,6 +6,7 @@ import { buildGenerationPrompt } from "@/lib/prompts";
 import { GenerateResponse } from "@/lib/types";
 import { extractJson } from "@/lib/parse-json";
 import { logAIUsage } from "@/lib/ai-logger";
+import { scorePosts } from "@/lib/content-scorer";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -74,6 +75,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to parse AI response. Try again." }, { status: 500 });
     }
 
+    // UTM injection — only if profile has a product_link
+    if (profile?.product_link && typeof profile.product_link === 'string') {
+      const link = profile.product_link as string;
+      const sep = link.includes('?') ? '&' : '?';
+      const injectUtm = (text: string, platform: string): string => {
+        if (!text || !text.includes(link)) return text;
+        const utmUrl = `${link}${sep}utm_source=${platform}&utm_medium=social&utm_campaign=shipcast`;
+        return text.split(link).join(utmUrl);
+      };
+      if (parsed.tweet)          parsed = { ...parsed, tweet:          injectUtm(parsed.tweet,          'twitter') };
+      if (parsed.linkedin)       parsed = { ...parsed, linkedin:       injectUtm(parsed.linkedin,       'linkedin') };
+      if (parsed.reddit)         parsed = { ...parsed, reddit:         injectUtm(parsed.reddit,         'reddit') };
+      if (parsed.indie_hackers)  parsed = { ...parsed, indie_hackers:  injectUtm(parsed.indie_hackers,  'indie_hackers') };
+    }
+
     // Save update to DB
     const { data: update, error: updateError } = await supabaseAdmin
       .from("updates")
@@ -86,7 +102,7 @@ export async function POST(req: Request) {
     }
 
     // Save generated content
-    await supabaseAdmin.from("generated_content").insert({
+    const { data: savedContent } = await supabaseAdmin.from("generated_content").insert({
       update_id: update.id,
       tweet: parsed.tweet,
       thread: parsed.thread,
@@ -97,7 +113,39 @@ export async function POST(req: Request) {
       email_subject: parsed.email_subject ?? null,
       email_body: parsed.email_body ?? null,
       changelog_entry: parsed.changelog_entry ?? null,
-    });
+    }).select().single();
+
+    // Score content in background (non-blocking — doesn't affect response time)
+    if (savedContent) {
+      const contentId = savedContent.id;
+      const headline = rawUpdate.slice(0, 200);
+      const postsToScore = [
+        { format: "tweet", content: parsed.tweet },
+        { format: "linkedin", content: parsed.linkedin },
+        { format: "reddit", content: parsed.reddit },
+        { format: "indie_hackers", content: parsed.indie_hackers },
+      ].filter((p) => !!p.content) as { format: string; content: string }[];
+
+      scorePosts(postsToScore, { headline, summary: headline, benefits: [] })
+        .then(async (batch) => {
+          if (batch.scores.length === 0) return;
+          await supabaseAdmin.from("content_scores").insert(
+            batch.scores.map((s) => ({
+              generated_content_id: contentId,
+              announcement_id: null,
+              format: s.format,
+              score: s.score,
+              hook_strength: s.hook_strength,
+              clarity: s.clarity,
+              benefit_emphasis: s.benefit_emphasis,
+              novelty: s.novelty,
+              feedback: s.feedback,
+              needs_regeneration: s.needs_regeneration,
+            }))
+          );
+        })
+        .catch(() => { /* scoring is best-effort */ });
+    }
 
     return NextResponse.json({ content: parsed, updateId: update.id });
   } catch (err: unknown) {

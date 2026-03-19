@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { GenerateResponse } from "@/lib/types";
-import { Copy, Check, Send, CalendarClock, Loader2, Wand2, RefreshCw } from "lucide-react";
+import { Copy, Check, Send, CalendarClock, Loader2, Wand2, RefreshCw, FlaskConical, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface ContentTabsProps {
@@ -138,6 +138,48 @@ function ImproveButton({ platform, value, onImproved }: { platform: string; valu
   );
 }
 
+interface ABVariants { variantA: string; variantB: string; hookA: string; hookB: string; }
+
+function ABTestTrigger({ platform, value, loading, onGenerate }: {
+  platform: string; value: string; loading: boolean; onGenerate: (v: string, p: string) => void;
+}) {
+  const abSupported = ["tweet", "linkedin", "thread", "reddit", "indie_hackers"].includes(platform);
+  if (!abSupported) return null;
+  return (
+    <Button size="sm" variant="outline"
+      className="border-zinc-700 text-zinc-400 hover:text-purple-400 hover:border-purple-500/40 bg-transparent h-7 px-2 text-xs gap-1"
+      onClick={() => onGenerate(value, platform)} disabled={loading} title="Generate A/B variants">
+      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+      A/B
+    </Button>
+  );
+}
+
+function ABTestPanel({ variants, onSelect, onClose }: {
+  variants: ABVariants; onSelect: (v: string, label: string) => void; onClose: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-purple-400 font-medium">A/B Variants — pick one to use</span>
+        <button onClick={onClose} className="text-zinc-600 hover:text-white"><X className="h-3.5 w-3.5" /></button>
+      </div>
+      {([["A", variants.variantA, variants.hookA], ["B", variants.variantB, variants.hookB]] as [string, string, string][]).map(([label, text, hook]) => (
+        <div key={label} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-zinc-500">Variant {label} · {hook}</span>
+            <Button size="sm" className="h-6 px-2 text-[10px] bg-white text-black hover:bg-zinc-200"
+              onClick={() => onSelect(text, label)}>
+              Use this
+            </Button>
+          </div>
+          <p className="text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">{text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const FORMAT_LABELS: Record<string, string> = {
   tweet: "Tweet", thread: "Thread", linkedin: "LinkedIn", reddit: "Reddit",
   indie_hackers: "Indie Hackers", blog_draft: "Detailed Update",
@@ -232,9 +274,30 @@ export function ContentTabs({ content, plan = "free", updateId }: ContentTabsPro
                        : (content.email_body ?? ""),
     changelog_entry: content.changelog_entry ?? "",
   });
+  const [abVariants, setAbVariants] = useState<Partial<Record<TabKey, ABVariants>>>({});
+  const [abLoading, setAbLoading] = useState<Partial<Record<TabKey, boolean>>>({});
 
   const update = (key: TabKey) => (val: string) =>
     setValues((prev) => ({ ...prev, [key]: val }));
+
+  const generateAB = async (value: string, platform: string) => {
+    const key = platform as TabKey;
+    setAbLoading((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/ab-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: value, platform }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setAbVariants((prev) => ({ ...prev, [key]: data }));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "A/B test failed");
+    } finally {
+      setAbLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  };
 
   const isStudio = plan === "studio";
 
@@ -267,6 +330,7 @@ export function ContentTabs({ content, plan = "free", updateId }: ContentTabsPro
                   onResult={(targetKey, result) => update(targetKey as TabKey)(result)}
                 />
                 <ImproveButton platform={t.key} value={values[t.key]} onImproved={update(t.key)} />
+                <ABTestTrigger platform={t.key} value={values[t.key]} loading={!!abLoading[t.key]} onGenerate={generateAB} />
                 <CopyButton text={values[t.key]} />
                 {isStudio && t.platform && (
                   <>
@@ -291,6 +355,13 @@ export function ContentTabs({ content, plan = "free", updateId }: ContentTabsPro
             )}
             {t.key === "blog_draft" && (
               <p className="text-xs text-zinc-700">Markdown — paste into Hashnode, Ghost, or your CMS.</p>
+            )}
+            {abVariants[t.key] && (
+              <ABTestPanel
+                variants={abVariants[t.key]!}
+                onSelect={(v, label) => { update(t.key)(v); setAbVariants((prev) => ({ ...prev, [t.key]: undefined })); toast.success(`Variant ${label} applied`); }}
+                onClose={() => setAbVariants((prev) => ({ ...prev, [t.key]: undefined }))}
+              />
             )}
             {!isStudio && t.platform && (
               <p className="text-xs text-zinc-700">

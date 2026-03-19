@@ -163,9 +163,10 @@ export default async function AutomationPage() {
 
       {/* Review queue — only shown when there are pending items */}
       {hasPending && (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         <AutomationClient
-          initialGroups={pendingGroups ?? []}
-          initialAnnouncements={(draftAnnouncements ?? []) as Record<string, unknown>[]}
+          initialGroups={(pendingGroups ?? []) as any}
+          initialAnnouncements={(draftAnnouncements ?? []) as any}
         />
       )}
     </div>

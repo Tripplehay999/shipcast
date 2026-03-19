@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { BrandVoice } from "@/lib/types";
+import { ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 
 const voiceOptions: { value: BrandVoice; label: string; desc: string }[] = [
   {
@@ -31,14 +32,42 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzed, setAnalyzed] = useState(false);
 
+  const [productUrl, setProductUrl] = useState("");
   const [productName, setProductName] = useState("");
   const [productDescription, setProductDescription] = useState("");
+  const [targetAudience, setTargetAudience] = useState("");
   const [brandVoice, setBrandVoice] = useState<BrandVoice>("casual");
   const [examplePosts, setExamplePosts] = useState(["", ""]);
 
   const updateExample = (index: number, value: string) => {
     setExamplePosts((prev) => prev.map((p, i) => (i === index ? value : p)));
+  };
+
+  const handleAnalyze = async () => {
+    if (!productUrl.trim()) return;
+    setAnalyzing(true);
+    try {
+      const res = await fetch("/api/analyze-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: productUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Analysis failed");
+      if (json.productName) setProductName(json.productName);
+      if (json.productDescription) setProductDescription(json.productDescription);
+      if (json.targetAudience) setTargetAudience(json.targetAudience);
+      setAnalyzed(true);
+      toast.success("Product analyzed! Review and edit below.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not analyze URL";
+      toast.error(message);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -52,6 +81,7 @@ export default function OnboardingPage() {
           productDescription,
           brandVoice,
           examplePosts: examplePosts.filter((p) => p.trim()),
+          productLink: productUrl.trim() || undefined,
         }),
       });
 
@@ -83,16 +113,70 @@ export default function OnboardingPage() {
           ))}
         </div>
 
-        {/* Step 1: Product info */}
+        {/* Step 1: Analyze your product */}
         {step === 1 && (
           <div className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold mb-1">Tell us about your product</h1>
+              <h1 className="text-2xl font-bold mb-1">Let&apos;s build your marketing system</h1>
               <p className="text-zinc-500 text-sm">
-                This helps Shipcast write content that sounds specific, not generic.
+                Start with your product URL and we&apos;ll auto-fill everything.
               </p>
             </div>
 
+            {/* URL input */}
+            <div className="space-y-2">
+              <Label htmlFor="url">Product URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="url"
+                  type="url"
+                  placeholder="https://yourproduct.com"
+                  value={productUrl}
+                  onChange={(e) => setProductUrl(e.target.value)}
+                  className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAnalyze();
+                    }
+                  }}
+                />
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={!productUrl.trim() || analyzing}
+                  className="bg-white text-black hover:bg-zinc-200 shrink-0"
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      Analyze
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </div>
+              {analyzing && (
+                <p className="text-xs text-zinc-600 animate-pulse">
+                  Analyzing your product...
+                </p>
+              )}
+            </div>
+
+            {/* Analyzed card */}
+            {analyzed && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-start gap-3">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                <div className="text-xs text-emerald-300">
+                  Product detected. Fields pre-filled below — edit anything that&apos;s off.
+                </div>
+              </div>
+            )}
+
+            {/* Product name */}
             <div className="space-y-2">
               <Label htmlFor="name">Product name</Label>
               <Input
@@ -104,6 +188,7 @@ export default function OnboardingPage() {
               />
             </div>
 
+            {/* Product description */}
             <div className="space-y-2">
               <Label htmlFor="desc">What does it do? (1-2 sentences)</Label>
               <Textarea
@@ -113,6 +198,21 @@ export default function OnboardingPage() {
                 onChange={(e) => setProductDescription(e.target.value)}
                 rows={3}
                 className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 resize-none"
+              />
+            </div>
+
+            {/* Target audience */}
+            <div className="space-y-2">
+              <Label htmlFor="audience">
+                Target audience{" "}
+                <span className="text-zinc-600 font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="audience"
+                placeholder="e.g. freelancers, startup founders, developers"
+                value={targetAudience}
+                onChange={(e) => setTargetAudience(e.target.value)}
+                className="bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600"
               />
             </div>
 
@@ -131,9 +231,7 @@ export default function OnboardingPage() {
           <div className="space-y-6">
             <div>
               <h1 className="text-2xl font-bold mb-1">Pick your brand voice</h1>
-              <p className="text-zinc-500 text-sm">
-                Every post will be generated in this tone.
-              </p>
+              <p className="text-zinc-500 text-sm">Every post will be generated in this tone.</p>
             </div>
 
             <div className="space-y-3">
@@ -211,7 +309,14 @@ export default function OnboardingPage() {
                 onClick={handleSubmit}
                 disabled={loading}
               >
-                {loading ? "Saving..." : "Finish setup"}
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Finish setup"
+                )}
               </Button>
             </div>
           </div>

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { productName, productDescription, brandVoice, examplePosts } = await req.json();
+  const { productName, productDescription, brandVoice, examplePosts, productLink } = await req.json();
 
   const allowedVoices = ["casual", "professional", "developer"];
   if (brandVoice && !allowedVoices.includes(brandVoice)) {
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
         product_description: productDescription,
         brand_voice: brandVoice,
         example_posts: examplePosts,
+        ...(productLink !== undefined && { product_link: productLink || null }),
       },
       { onConflict: "clerk_user_id" }
     )
